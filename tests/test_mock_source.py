@@ -57,6 +57,13 @@ class MockSourceTests(unittest.TestCase):
             ],
         )
 
+    def test_danmaku_sample_exercises_wrapping_content(self):
+        text = self.source.build_message(1).data["text"]
+        self.assertGreaterEqual(len(text), 120)
+        self.assertIn("English words", text)
+        self.assertIn("<OBS> & everyone", text)
+        self.assertIn("ABCDEFGHIJKLMNOPQRSTUVWXYZ", text)
+
     def test_sequence_is_monotonic_and_zero_padded_id(self):
         self.assertEqual(self.source.build_message(1).id, "mock:0001")
         self.assertEqual(self.source.build_message(2).id, "mock:0002")

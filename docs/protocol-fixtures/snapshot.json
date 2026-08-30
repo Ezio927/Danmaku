@@ -10,7 +10,7 @@
         "source": "mock",
         "kind": "danmaku",
         "user": {"id": "user:alice", "name": "Alice"},
-        "data": {"text": "Hello <OBS> & everyone"}
+        "data": {"text": "欢迎来到 Danmaku First Vertical Slice！这是一条用于验证 OBS 浏览器源自动换行行为的长弹幕消息，包含中文、English words、HTML 敏感文本 <OBS> & everyone、数字 1234567890，以及一个不会破坏布局的超长连续片段：ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789。"}
       },
       {
         "id": "mock:0002",
