@@ -32,6 +32,22 @@ The default OBS URL is `http://127.0.0.1:17391/obs`.
 
 ## Test
 
+Run the full suite:
+
 ```bash
 .venv/bin/python -m unittest discover -s tests -p "test_*.py" -v
 ```
+
+Run only the end-to-end slice acceptance test, which drives the real loopback
+`aiohttp` Service and observes four ordered deterministic mock messages (one of
+each kind) over the real WebSocket:
+
+```bash
+.venv/bin/python -m unittest tests.test_vertical_slice -v
+```
+
+## Smoke
+
+For the full local runbook — including how automated transport evidence is kept
+separate from a manual browser/OBS visual check — see
+`docs/phase8-pilot-smoke.md`.

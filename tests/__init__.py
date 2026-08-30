@@ -1,1 +1,1 @@
-"""Focused tests for the Danmaku first vertical slice core."""
+"""Test package for the Danmaku First Vertical Slice."""

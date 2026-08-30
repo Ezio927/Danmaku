@@ -1,0 +1,107 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  color: #ffffff;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui,
+    sans-serif;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+#messages {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 8px 12px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.item {
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.item__label {
+  margin-right: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.item__user {
+  margin-right: 6px;
+  font-weight: 700;
+  color: #9fd3ff;
+}
+
+.item--danmaku {
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.item--gift {
+  color: #fff3d6;
+  background: rgba(140, 84, 16, 0.65);
+  border-left: 3px solid #ffb02e;
+}
+
+.item--gift .item__label {
+  color: #ffd88a;
+}
+
+.item--guard {
+  color: #e7f6ff;
+  background: rgba(16, 84, 140, 0.65);
+  border-left: 3px solid #5cc8ff;
+}
+
+.item--guard .item__label {
+  color: #9fdcff;
+}
+
+.item--super-chat {
+  color: #fff0f4;
+  background: rgba(140, 24, 48, 0.7);
+  border-left: 3px solid #ff5c82;
+}
+
+.item--super-chat .item__label {
+  color: #ffb3c6;
+}
+
+@keyframes danmaku-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.item--enter {
+  animation: danmaku-enter 160ms ease-out;
+}
