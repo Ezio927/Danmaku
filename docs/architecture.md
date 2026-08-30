@@ -13,6 +13,21 @@ changes belong to a later implementation Task. PySide6/Qt Widgets is the
 future desktop direction only; it is not a dependency and is not installed or
 used in this slice.
 
+## Acceptance boundary
+
+This design-onboarding Task adds no application code: no core, OBS page, local
+service, or server exists yet. Therefore it makes no runtime bind claim.
+`127.0.0.1` is the frozen host invariant that later implementation must satisfy;
+binding any other interface is prohibited.
+
+| Task boundary | Accepted or deferred evidence |
+| --- | --- |
+| This design-onboarding Task | Accepts the architecture, frozen v1 protocol and fixtures, test seams, and loopback-only invariant as unambiguous documentation. |
+| Future core implementation Task | Implements and unit-tests message validation, deterministic mock production, bounded snapshots, and ordered subscriber distribution. |
+| Future OBS-page implementation Task | Implements and tests safe rendering, bounded DOM behavior, snapshot/increment handling, and reconnect behavior. |
+| Future local-service implementation Task | Implements the HTTP/WebSocket adapter and proves that its listener binds exactly `127.0.0.1`, including bind-failure and lifecycle tests. |
+| Future system-validation Task | Runs end-to-end browser/OBS checks against the implemented core, page, and loopback service; it does not retroactively make runtime behavior an acceptance criterion here. |
+
 ## Boundaries and flow
 
 ```text
@@ -41,4 +56,3 @@ error, while invalid internal messages fail before publication.
 State is bounded in memory: a 100-message snapshot and per-client queue. Service
 shutdown stops the mock producer, closes clients, then releases the runner.
 Restart loses the snapshot by design.
-
