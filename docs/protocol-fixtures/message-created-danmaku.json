@@ -1,0 +1,1 @@
+{"protocolVersion":1,"type":"message.created","payload":{"message":{"id":"mock:0001","sequence":1,"receivedAt":"2026-01-01T00:00:00.000Z","source":"mock","kind":"danmaku","user":{"id":"user:alice","name":"Alice"},"data":{"text":"Hello <OBS> & everyone"}}}}

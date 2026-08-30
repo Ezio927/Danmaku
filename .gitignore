@@ -212,6 +212,9 @@ docs/danmaku_requirements_analysis.md
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Local Agent Workflow state
+.agent-workflow/
+
 # Ruff stuff:
 .ruff_cache/
 

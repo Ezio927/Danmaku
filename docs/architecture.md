@@ -1,0 +1,58 @@
+# First Vertical Slice architecture
+
+## Scope and decision
+
+This document covers only deterministic simulated messages rendered by a local
+OBS-compatible page. There is no Bilibili connection, desktop window, secret,
+filtering, persistence, installer, deployment, or database.
+
+Python 3.12 runs one process and one `asyncio` event loop. The approved runtime
+web dependency is `aiohttp`, chosen to provide HTTP, static resources,
+WebSockets, and test clients in one stack. Dependency installation and metadata
+changes belong to a later implementation Task. PySide6/Qt Widgets is the
+future desktop direction only; it is not a dependency and is not installed or
+used in this slice.
+
+## Acceptance boundary
+
+This design-onboarding Task adds no application code: no core, OBS page, local
+service, or server exists yet. Therefore it makes no runtime bind claim.
+`127.0.0.1` is the frozen host invariant that later implementation must satisfy;
+binding any other interface is prohibited.
+
+| Task boundary | Accepted or deferred evidence |
+| --- | --- |
+| This design-onboarding Task | Accepts the architecture, frozen v1 protocol and fixtures, test seams, and loopback-only invariant as unambiguous documentation. |
+| Future core implementation Task | Implements and unit-tests message validation, deterministic mock production, bounded snapshots, and ordered subscriber distribution. |
+| Future OBS-page implementation Task | Implements and tests safe rendering, bounded DOM behavior, snapshot/increment handling, and reconnect behavior. |
+| Future local-service implementation Task | Implements the HTTP/WebSocket adapter and proves that its listener binds exactly `127.0.0.1`, including bind-failure and lifecycle tests. |
+| Future system-validation Task | Runs end-to-end browser/OBS checks against the implemented core, page, and loopback service; it does not retroactively make runtime behavior an acceptance criterion here. |
+
+## Boundaries and flow
+
+```text
+deterministic MockSource
+  -> canonical Message validation
+  -> DistributionHub (ordered publish)
+  -> SnapshotStore (oldest-first, max 100)
+  -> aiohttp adapter bound to 127.0.0.1
+       GET /health   GET /obs   GET /assets/{name}   GET /ws
+  -> plain HTML/CSS/JS OBS page (transparent, bottom anchored)
+```
+
+Core does not import `aiohttp` or browser code. The service composes the core
+and serializes the frozen protocol. The OBS page consumes only protocol frames.
+Each WebSocket client has an independent bounded outbound queue; a slow or
+failed client is closed without delaying the hub or other clients.
+
+## Security and failure boundary
+
+The listener host is a constant `127.0.0.1`, not a user-supplied interface.
+There is no CORS promise, authentication, credential input, remote fetch, or
+file-system data store. Browser content is untrusted text and is inserted with
+`textContent`/`createTextNode`. A malformed client frame receives a versioned
+error, while invalid internal messages fail before publication.
+
+State is bounded in memory: a 100-message snapshot and per-client queue. Service
+shutdown stops the mock producer, closes clients, then releases the runner.
+Restart loses the snapshot by design.

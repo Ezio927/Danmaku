@@ -1,0 +1,44 @@
+{
+  "protocolVersion": 1,
+  "type": "snapshot",
+  "payload": {
+    "messages": [
+      {
+        "id": "mock:0001",
+        "sequence": 1,
+        "receivedAt": "2026-01-01T00:00:00.000Z",
+        "source": "mock",
+        "kind": "danmaku",
+        "user": {"id": "user:alice", "name": "Alice"},
+        "data": {"text": "Hello <OBS> & everyone"}
+      },
+      {
+        "id": "mock:0002",
+        "sequence": 2,
+        "receivedAt": "2026-01-01T00:00:01.000Z",
+        "source": "mock",
+        "kind": "gift",
+        "user": {"id": "user:bob", "name": "Bob"},
+        "data": {"giftName": "Star", "quantity": 2, "totalAmountMilliCny": 1000}
+      },
+      {
+        "id": "mock:0003",
+        "sequence": 3,
+        "receivedAt": "2026-01-01T00:00:02.000Z",
+        "source": "mock",
+        "kind": "guard",
+        "user": {"id": "user:dana", "name": "Dana"},
+        "data": {"tier": "captain", "months": 1}
+      },
+      {
+        "id": "mock:0004",
+        "sequence": 4,
+        "receivedAt": "2026-01-01T00:00:03.000Z",
+        "source": "mock",
+        "kind": "superChat",
+        "user": {"id": "user:carol", "name": "Carol"},
+        "data": {"text": "Great stream", "amountMilliCny": 30000, "durationSeconds": 60}
+      }
+    ]
+  }
+}
