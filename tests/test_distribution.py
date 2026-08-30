@@ -99,13 +99,14 @@ class SnapshotStoreTests(unittest.TestCase):
         with self.assertRaises(NonIncreasingSequenceError):
             store.append(make_message_with(4, "c"))
 
-    def test_evicted_id_can_be_reused_after_bound(self):
+    def test_evicted_id_still_rejected_after_bound(self):
         store = SnapshotStore(max_messages=2)
         store.append(make_message_with(1, "old"))
         store.append(make_message_with(2, "b"))
         store.append(make_message_with(3, "c"))
-        store.append(make_message_with(4, "old"))
-        self.assertEqual([m.sequence for m in store.list()], [3, 4])
+        with self.assertRaises(DuplicateIdError):
+            store.append(make_message_with(4, "old"))
+        self.assertEqual([m.sequence for m in store.list()], [2, 3])
 
 
 class DistributionHubTests(unittest.IsolatedAsyncioTestCase):

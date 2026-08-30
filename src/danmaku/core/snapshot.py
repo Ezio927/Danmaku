@@ -24,6 +24,11 @@ class SnapshotStore:
     whose sequence does not strictly exceed the latest stored sequence, is
     rejected before it enters the snapshot.
 
+    The payload snapshot is bounded at ``max_messages`` messages, but every
+    canonical id ever accepted is retained in a process-lifetime ``seen_ids``
+    set so that a duplicate id is rejected even after its payload has been
+    evicted.
+
     ``list()`` returns an immutable oldest-first copy.
     """
 
@@ -36,7 +41,7 @@ class SnapshotStore:
             raise ValueError("max_messages must be a positive integer")
         self._max_messages = max_messages
         self._messages: deque[Message] = deque()
-        self._ids: set[str] = set()
+        self._seen_ids: set[str] = set()
 
     def append(self, message: Message) -> None:
         if not isinstance(message, Message):
@@ -46,12 +51,12 @@ class SnapshotStore:
                 f"sequence must strictly increase: "
                 f"{message.sequence} <= {self._messages[-1].sequence}"
             )
-        if message.id in self._ids:
+        if message.id in self._seen_ids:
             raise DuplicateIdError(f"duplicate message id: {message.id!r}")
         self._messages.append(message)
-        self._ids.add(message.id)
+        self._seen_ids.add(message.id)
         while len(self._messages) > self._max_messages:
-            self._ids.discard(self._messages.popleft().id)
+            self._messages.popleft()
 
     def list(self) -> tuple[Message, ...]:
         return tuple(self._messages)
