@@ -1,0 +1,41 @@
+{
+  "verify": {
+    "fast": [
+      {
+        "argv": ["python3", "-m", "json.tool", ".agent/project.yaml"],
+        "timeout": 10
+      },
+      {
+        "argv": ["python3", "-m", "json.tool", ".agent/verify.yaml"],
+        "timeout": 10
+      },
+      {
+        "argv": ["python3", "-c", "import json,glob; [json.load(open(p, encoding='utf-8')) for p in glob.glob('docs/protocol-fixtures/*.json')]"],
+        "timeout": 10
+      },
+      {
+        "argv": ["git", "diff", "--check"],
+        "timeout": 30
+      }
+    ],
+    "full": [
+      {
+        "argv": ["python3", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"],
+        "timeout": 120
+      },
+      {
+        "argv": ["python3", "-m", "compileall", "-q", "src", "tests"],
+        "timeout": 60
+      },
+      {
+        "argv": ["python3", "-c", "import json,glob; json.load(open('.agent/project.yaml', encoding='utf-8')); json.load(open('.agent/verify.yaml', encoding='utf-8')); [json.load(open(p, encoding='utf-8')) for p in glob.glob('docs/protocol-fixtures/*.json')]"],
+        "timeout": 10
+      },
+      {
+        "argv": ["git", "diff", "--check"],
+        "timeout": 30
+      }
+    ]
+  }
+}
+

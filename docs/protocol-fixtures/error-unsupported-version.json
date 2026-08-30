@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "type": "error",
+  "payload": {
+    "code": "UNSUPPORTED_VERSION",
+    "message": "Only protocolVersion 1 is supported."
+  }
+}
