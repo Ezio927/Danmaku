@@ -373,5 +373,96 @@ class ImmutabilityTests(unittest.TestCase):
         self.assertIsInstance(message.user, User)
 
 
+class CanonicalConstructionTests(unittest.TestCase):
+    def _message(self, **overrides):
+        fields = {
+            "id": "mock:0001",
+            "sequence": 1,
+            "received_at": "2026-01-01T00:00:00.000Z",
+            "source": "mock",
+            "kind": "danmaku",
+            "user": User(id="user:alice", name="Alice"),
+            "data": {"text": "hello"},
+        }
+        fields.update(overrides)
+        return Message(**fields)
+
+    def test_user_direct_construction_rejects_invalid_id(self):
+        with self.assertRaises(ValidationError):
+            User(id="_bad", name="Alice")
+
+    def test_user_direct_construction_rejects_empty_name(self):
+        with self.assertRaises(ValidationError):
+            User(id="user:a", name="")
+
+    def test_user_direct_construction_rejects_control_character(self):
+        with self.assertRaises(ValidationError):
+            User(id="user:a", name="Ali\u0000ce")
+
+    def test_user_direct_construction_accepts_canonical(self):
+        user = User(id="user:alice", name="Alice")
+        self.assertEqual(user.to_dict(), {"id": "user:alice", "name": "Alice"})
+
+    def test_message_direct_construction_rejects_invalid_id(self):
+        with self.assertRaises(ValidationError):
+            self._message(id="_bad")
+
+    def test_message_direct_construction_rejects_invalid_sequence(self):
+        with self.assertRaises(ValidationError):
+            self._message(sequence=0)
+
+    def test_message_direct_construction_rejects_invalid_kind(self):
+        with self.assertRaises(ValidationError):
+            self._message(kind="superchat")
+
+    def test_message_direct_construction_rejects_non_mock_source(self):
+        with self.assertRaises(ValidationError):
+            self._message(source="bilibili")
+
+    def test_message_direct_construction_rejects_invalid_received_at(self):
+        with self.assertRaises(ValidationError):
+            self._message(received_at="2026-01-01T00:00:00Z")
+
+    def test_message_direct_construction_rejects_invalid_data(self):
+        with self.assertRaises(ValidationError):
+            self._message(data={"text": ""})
+
+    def test_message_direct_construction_accepts_user_dict(self):
+        message = self._message(user={"id": "user:alice", "name": "Alice"})
+        self.assertIsInstance(message.user, User)
+
+    def test_message_direct_construction_rejects_unknown_user_key(self):
+        with self.assertRaises(ValidationError):
+            self._message(user={"id": "user:alice", "name": "Alice", "avatar": "x"})
+
+    def test_message_direct_construction_round_trips(self):
+        message = self._message()
+        self.assertEqual(
+            message.to_dict(),
+            {
+                "id": "mock:0001",
+                "sequence": 1,
+                "receivedAt": "2026-01-01T00:00:00.000Z",
+                "source": "mock",
+                "kind": "danmaku",
+                "user": {"id": "user:alice", "name": "Alice"},
+                "data": {"text": "hello"},
+            },
+        )
+
+    def test_from_dict_still_validates_nested_user(self):
+        value = {
+            "id": "mock:0001",
+            "sequence": 1,
+            "receivedAt": "2026-01-01T00:00:00.000Z",
+            "source": "mock",
+            "kind": "danmaku",
+            "user": {"id": "user:alice", "name": ""},
+            "data": {"text": "hello"},
+        }
+        with self.assertRaises(ValidationError):
+            Message.from_dict(value)
+
+
 if __name__ == "__main__":
     unittest.main()

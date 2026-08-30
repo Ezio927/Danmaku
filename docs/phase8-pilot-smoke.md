@@ -31,7 +31,7 @@ drive the real packaged `/obs` page and its assets over the loopback service.
 .venv/bin/python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Expected result: the full suite (137 cases as of this run) passes. This is the
+Expected result: the full suite (166 cases as of this run) passes. This is the
 "full" verification profile for the Task.
 
 ### Observed evidence (recorded by this task)
@@ -41,7 +41,11 @@ Expected result: the full suite (137 cases as of this run) passes. This is the
 - `tests.test_vertical_slice.VerticalSliceE2ETests.test_obs_references_only_assets_that_return_200` — **PASS**: parses the served `/obs` HTML and asserts every referenced `/assets/*` resource returns 200 over the real service.
 - `tests.test_vertical_slice.VerticalSliceE2ETests.test_assets_serve_correct_content_types` — **PASS**: `/assets/app.js` serves `text/javascript` and `/assets/style.css` serves `text/css`.
 - `tests.test_service.ServiceIntegrationTests.test_unknown_and_traversal_assets_404` — **PASS**: `app.js`/`style.css` serve 200 while unknown and traversal-like paths remain 404.
-- Full `unittest discover` — **137/137 OK**.
+- `tests.test_message_model.CanonicalConstructionTests` — **PASS**: direct `User`/`Message` construction goes through canonical validation, and invalid instances fail to construct.
+- `tests.test_distribution.DistributionHubOrderingTests` — **PASS**: the hub rejects duplicate IDs and non-strictly-increasing sequences before snapshot/broadcast, including against existing snapshot state.
+- `tests.test_protocol` HEAD/405 cases — **PASS**: `HEAD` and every non-`GET` method return 405 on all four frozen `GET` routes.
+- `tests.test_installation` — **PASS**: `pyproject.toml` declares the web assets as package data and the `python -m danmaku` entry point parses its documented startup flags.
+- Full `unittest discover` — **166/166 OK**.
 
 ## 2. Manual browser/OBS visual check (not performed here)
 
@@ -77,7 +81,9 @@ must be recorded by that operator, not inferred from the automated tests above.
 | Four ordered kinds over the real loopback WebSocket | automated | this task (PASS) |
 | Packaged `/obs` page references only assets that return 200 | automated | this task (PASS) |
 | `/assets/app.js` and `/assets/style.css` content types | automated | this task (PASS) |
-| Full project verification | automated | this task (137/137 PASS) |
+| Canonical-valid construction; hub duplicate-ID/sequence rejection; HEAD→405 | automated | this task (PASS) |
+| Installation/package-data/entry-point checks | automated | this task (PASS) |
+| Full project verification | automated | this task (166/166 PASS) |
 | Transparent rendering, bottom anchor, four visible variants | manual visual | **not performed** — pending operator |
 | OBS Browser Source automation | manual / tooling | **not claimed** |
 
