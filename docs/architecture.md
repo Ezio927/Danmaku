@@ -53,6 +53,13 @@ file-system data store. Browser content is untrusted text and is inserted with
 `textContent`/`createTextNode`. A malformed client frame receives a versioned
 error, while invalid internal messages fail before publication.
 
-State is bounded in memory: a 100-message snapshot and per-client queue. Service
-shutdown stops the mock producer, closes clients, then releases the runner.
-Restart loses the snapshot by design.
+State is bounded in memory: the snapshot retains at most 100 message payloads in
+oldest-first order, plus a process-lifetime set of canonical ID strings used for
+duplicate rejection. Payload eviction never removes an ID from that set, so a
+duplicate ID stays rejected for the life of the store while the payload stays
+bounded at 100. This deliberately trades unbounded growth of a small string set
+against guaranteed process-lifetime message-ID uniqueness. The per-ID memory
+cost and total retained-ID growth are measured in a future eight-hour
+qualification, not claimed here. Service shutdown stops the mock producer,
+closes clients, then releases the runner. Restart loses both the snapshot and
+the seen-ID set by design.

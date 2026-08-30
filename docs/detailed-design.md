@@ -9,7 +9,10 @@ fixed fixture-equivalent values. Its cancellation is normal shutdown.
 
 `SnapshotStore.append(message)` retains the latest 100 messages and returns no
 transport objects. `SnapshotStore.list()` returns an immutable oldest-first
-copy. `DistributionHub.publish(message)` validates, appends, assigns no new
+copy. The payload snapshot is bounded at 100 messages, but the store keeps every
+accepted canonical id in a process-lifetime `seen_ids` set that is never
+evicted, so a duplicate id is rejected even after its payload leaves the
+snapshot. `DistributionHub.publish(message)` validates, appends, assigns no new
 identity, and offers the same message to subscribers in publish order.
 Subscriptions expose async receive and explicit close; each has capacity 100.
 If a subscriber queue is full, that subscriber is closed with WebSocket code
