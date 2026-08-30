@@ -21,23 +21,27 @@ aiohttp WebSocket -> protocol v1`. No `TestClient` or manual publish is used.
 .venv/bin/python -m unittest tests.test_vertical_slice -v
 ```
 
-Expected result: both cases pass, and the WebSocket case asserts four
+Expected result: all four cases pass. The WebSocket case asserts four
 `message.created` increments whose kinds cover `danmaku`, `gift`, `guard`, and
 `superChat` in the deterministic cyclic order, with strictly increasing
-sequences and the fixture-equivalent per-kind payloads.
+sequences and the fixture-equivalent per-kind payloads. The remaining cases
+drive the real packaged `/obs` page and its assets over the loopback service.
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-Expected result: the full suite (all 135 cases as of this run) passes. This is
-the "full" verification profile for the Task.
+Expected result: the full suite (137 cases as of this run) passes. This is the
+"full" verification profile for the Task.
 
 ### Observed evidence (recorded by this task)
 
 - `tests.test_vertical_slice.VerticalSliceE2ETests.test_observes_four_ordered_kinds_over_real_websocket` — **PASS**, stable across repeated runs.
 - `tests.test_vertical_slice.VerticalSliceE2ETests.test_real_service_serves_health_and_packaged_obs_page` — **PASS**.
-- Full `unittest discover` — **135/135 OK**.
+- `tests.test_vertical_slice.VerticalSliceE2ETests.test_obs_references_only_assets_that_return_200` — **PASS**: parses the served `/obs` HTML and asserts every referenced `/assets/*` resource returns 200 over the real service.
+- `tests.test_vertical_slice.VerticalSliceE2ETests.test_assets_serve_correct_content_types` — **PASS**: `/assets/app.js` serves `text/javascript` and `/assets/style.css` serves `text/css`.
+- `tests.test_service.ServiceIntegrationTests.test_unknown_and_traversal_assets_404` — **PASS**: `app.js`/`style.css` serve 200 while unknown and traversal-like paths remain 404.
+- Full `unittest discover` — **137/137 OK**.
 
 ## 2. Manual browser/OBS visual check (not performed here)
 
@@ -66,34 +70,15 @@ must be recorded by that operator, not inferred from the automated tests above.
 4. Stop and restart the service and confirm the page stays visually transparent
    while disconnected, then shows a replacement snapshot plus new increments.
 
-### Known blocking issue for step 3 (observed, out of scope to fix here)
-
-The packaged page served at `/obs` (`index.html`) references `/assets/style.css`
-and `/assets/app.js`, but the service asset allow-list in
-`src/danmaku/server/handlers.py` only admits `index.html`, `obs.js`, and
-`obs.css`. A programmatic check over the real service shows:
-
-```text
-/obs                  200 text/html
-/assets/index.html    200 text/html
-/assets/app.js        404
-/assets/style.css     404
-```
-
-Consequently the browser page will not yet load its stylesheet or client script,
-so the transparent, message-rendering visual smoke is **blocked** until the
-asset allow-list is reconciled with the packaged filenames. This is a
-cross-slice integration gap owned by the local-service / OBS-page Tasks and is
-outside this Task's `src/**` scope. The automated transport evidence in
-section 1 is unaffected and remains green.
-
 ## Evidence separation
 
 | Evidence | Kind | Recorded by |
 | --- | --- | --- |
 | Four ordered kinds over the real loopback WebSocket | automated | this task (PASS) |
-| Full project verification | automated | this task (135/135 PASS) |
-| Transparent rendering, bottom anchor, four visible variants | manual visual | **not performed** — pending operator + asset fix above |
+| Packaged `/obs` page references only assets that return 200 | automated | this task (PASS) |
+| `/assets/app.js` and `/assets/style.css` content types | automated | this task (PASS) |
+| Full project verification | automated | this task (137/137 PASS) |
+| Transparent rendering, bottom anchor, four visible variants | manual visual | **not performed** — pending operator |
 | OBS Browser Source automation | manual / tooling | **not claimed** |
 
 Do not treat the passing automated tests as proof of a visual check; a browser

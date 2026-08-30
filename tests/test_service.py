@@ -121,8 +121,8 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         (root / "index.html").write_text("<html>obs</html>", encoding="utf-8")
-        (root / "obs.js").write_text("// js", encoding="utf-8")
-        (root / "obs.css").write_text("/* css */", encoding="utf-8")
+        (root / "app.js").write_text("// js", encoding="utf-8")
+        (root / "style.css").write_text("/* css */", encoding="utf-8")
         self.root = root
 
     async def asyncTearDown(self):
@@ -233,7 +233,9 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
         service = await self._start()
         try:
             async with aiohttp.ClientSession() as sess:
-                async with sess.get(self._url(service, "/assets/obs.js")) as resp:
+                async with sess.get(self._url(service, "/assets/app.js")) as resp:
+                    self.assertEqual(resp.status, 200)
+                async with sess.get(self._url(service, "/assets/style.css")) as resp:
                     self.assertEqual(resp.status, 200)
                 async with sess.get(self._url(service, "/assets/secret.txt")) as resp:
                     self.assertEqual(resp.status, 404)
