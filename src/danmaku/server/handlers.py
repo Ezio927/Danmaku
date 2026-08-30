@@ -14,8 +14,8 @@ HEALTH_BODY = '{"protocolVersion":1,"status":"ok"}'
 
 ASSETS: dict[str, str] = {
     "index.html": "text/html; charset=utf-8",
-    "obs.js": "text/javascript; charset=utf-8",
-    "obs.css": "text/css; charset=utf-8",
+    "app.js": "text/javascript; charset=utf-8",
+    "style.css": "text/css; charset=utf-8",
 }
 
 

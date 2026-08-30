@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import re
 import socket
 import sys
 import unittest
@@ -138,6 +139,36 @@ class VerticalSliceE2ETests(unittest.IsolatedAsyncioTestCase):
                     body = await resp.text()
                     self.assertIn("<!DOCTYPE html>", body)
                     self.assertIn('id="messages"', body)
+        finally:
+            await service.stop()
+
+    async def test_obs_references_only_assets_that_return_200(self):
+        service = await self._start(cadence_milliseconds=60000)
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(self._url(service, "/obs")) as resp:
+                    self.assertEqual(resp.status, 200)
+                    body = await resp.text()
+                refs = set(re.findall(r'(?:href|src)="(/assets/[^"]+)"', body))
+                self.assertTrue(refs, "packaged /obs page must reference assets")
+                for path in sorted(refs):
+                    async with sess.get(self._url(service, path)) as asset:
+                        self.assertEqual(
+                            asset.status, 200, f"{path} must resolve to a served asset"
+                        )
+        finally:
+            await service.stop()
+
+    async def test_assets_serve_correct_content_types(self):
+        service = await self._start(cadence_milliseconds=60000)
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(self._url(service, "/assets/app.js")) as resp:
+                    self.assertEqual(resp.status, 200)
+                    self.assertEqual(resp.content_type, "text/javascript")
+                async with sess.get(self._url(service, "/assets/style.css")) as resp:
+                    self.assertEqual(resp.status, 200)
+                    self.assertEqual(resp.content_type, "text/css")
         finally:
             await service.stop()
 

@@ -170,8 +170,8 @@ class _AppMixin:
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         (root / "index.html").write_text("<html>obs</html>", encoding="utf-8")
-        (root / "obs.js").write_text("// js", encoding="utf-8")
-        (root / "obs.css").write_text("/* css */", encoding="utf-8")
+        (root / "app.js").write_text("// js", encoding="utf-8")
+        (root / "style.css").write_text("/* css */", encoding="utf-8")
         self.app = create_app(hub=self.hub, asset_root=root)
         self.client = TestClient(TestServer(self.app))
         await self.client.start_server()
@@ -226,7 +226,7 @@ class ProtocolHttpTests(_AppMixin, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.status, 405)
 
     async def test_known_asset_served(self):
-        resp = await self.client.get("/assets/obs.js")
+        resp = await self.client.get("/assets/app.js")
         self.assertEqual(resp.status, 200)
         self.assertEqual(resp.content_type, "text/javascript")
         self.assertEqual(await resp.text(), "// js")
@@ -240,7 +240,7 @@ class ProtocolHttpTests(_AppMixin, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resp.status, 404)
 
     async def test_asset_wrong_method_405(self):
-        resp = await self.client.post("/assets/obs.js")
+        resp = await self.client.post("/assets/app.js")
         self.assertEqual(resp.status, 405)
 
     async def test_ws_without_upgrade_400(self):
