@@ -5,6 +5,11 @@
     "repository": "/home/ezio/projects/Danmaku",
     "primaryBranch": "main",
     "integrationBranch": "dev",
+    "runtime": {
+      "language": "python",
+      "version": "3.12",
+      "packageSystem": "pip"
+    },
     "protectedPaths": [
       ".git/**",
       ".github/**",
@@ -20,4 +25,3 @@
     }
   }
 }
-
