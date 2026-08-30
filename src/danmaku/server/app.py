@@ -39,8 +39,8 @@ def create_app(
     app[WEBSOCKETS_KEY] = set()
     app[WS_DONE_KEY] = set()
 
-    app.router.add_get("/health", health_handler)
-    app.router.add_get("/obs", obs_handler)
-    app.router.add_get("/assets/{name}", asset_handler)
-    app.router.add_get("/ws", websocket_handler)
+    app.router.add_get("/health", health_handler, allow_head=False)
+    app.router.add_get("/obs", obs_handler, allow_head=False)
+    app.router.add_get("/assets/{name}", asset_handler, allow_head=False)
+    app.router.add_get("/ws", websocket_handler, allow_head=False)
     return app

@@ -118,13 +118,12 @@ def _validate_received_at(value: Any) -> str:
     return value
 
 
-def _validate_user(value: Any) -> "User":
+def _coerce_user(value: Any) -> "User":
+    if isinstance(value, User):
+        return value
     _require_object(value, "user")
     _exact_keys(value, {"id", "name"}, "user")
-    return User(
-        id=_validate_id(value["id"], "user.id"),
-        name=_validate_text(value["name"], "user.name", 1, 64),
-    )
+    return User(id=value["id"], name=value["name"])
 
 
 def _validate_data(kind: str, value: Any) -> dict[str, Any]:
@@ -178,6 +177,10 @@ class User:
     id: str
     name: str
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _validate_id(self.id, "user.id"))
+        object.__setattr__(self, "name", _validate_text(self.name, "user.name", 1, 64))
+
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.id, "name": self.name}
 
@@ -195,21 +198,29 @@ class Message:
     data: Mapping[str, Any]
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "data", MappingProxyType(dict(self.data)))
+        object.__setattr__(self, "id", _validate_id(self.id, "id"))
+        object.__setattr__(
+            self, "sequence", _validate_integer(self.sequence, "sequence", 1, MAX_SEQUENCE)
+        )
+        object.__setattr__(self, "received_at", _validate_received_at(self.received_at))
+        object.__setattr__(self, "source", _validate_source(self.source))
+        kind = _validate_kind(self.kind)
+        object.__setattr__(self, "kind", kind)
+        object.__setattr__(self, "user", _coerce_user(self.user))
+        object.__setattr__(self, "data", MappingProxyType(_validate_data(kind, self.data)))
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "Message":
         _require_object(value, "message")
         _exact_keys(value, MESSAGE_KEYS, "message")
-        kind = _validate_kind(value["kind"])
         return cls(
-            id=_validate_id(value["id"], "id"),
-            sequence=_validate_integer(value["sequence"], "sequence", 1, MAX_SEQUENCE),
-            received_at=_validate_received_at(value["receivedAt"]),
-            source=_validate_source(value["source"]),
-            kind=kind,
-            user=_validate_user(value["user"]),
-            data=_validate_data(kind, value["data"]),
+            id=value["id"],
+            sequence=value["sequence"],
+            received_at=value["receivedAt"],
+            source=value["source"],
+            kind=value["kind"],
+            user=value["user"],
+            data=value["data"],
         )
 
     @classmethod

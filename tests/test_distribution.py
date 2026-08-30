@@ -9,7 +9,11 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from danmaku.core.hub import DistributionHub, Subscription, SubscriptionClosed  # noqa: E402
 from danmaku.core.model import Message  # noqa: E402
-from danmaku.core.snapshot import SnapshotStore  # noqa: E402
+from danmaku.core.snapshot import (  # noqa: E402
+    DuplicateIdError,
+    NonIncreasingSequenceError,
+    SnapshotStore,
+)
 
 
 def make_message(sequence, kind="danmaku"):
@@ -22,6 +26,26 @@ def make_message(sequence, kind="danmaku"):
     return Message.from_dict(
         {
             "id": f"test:{sequence:04d}",
+            "sequence": sequence,
+            "receivedAt": "2026-01-01T00:00:00.000Z",
+            "source": "mock",
+            "kind": kind,
+            "user": {"id": "user:alice", "name": "Alice"},
+            "data": data,
+        }
+    )
+
+
+def make_message_with(sequence, message_id, kind="danmaku"):
+    data = {
+        "danmaku": {"text": "hello"},
+        "gift": {"giftName": "Star", "quantity": 2, "totalAmountMilliCny": 1000},
+        "guard": {"tier": "captain", "months": 1},
+        "superChat": {"text": "hi", "amountMilliCny": 30000, "durationSeconds": 60},
+    }[kind]
+    return Message.from_dict(
+        {
+            "id": message_id,
             "sequence": sequence,
             "receivedAt": "2026-01-01T00:00:00.000Z",
             "source": "mock",
@@ -60,6 +84,28 @@ class SnapshotStoreTests(unittest.TestCase):
         store = SnapshotStore()
         with self.assertRaises(TypeError):
             store.append({"id": "x"})
+
+    def test_rejects_duplicate_id(self):
+        store = SnapshotStore()
+        store.append(make_message(1))
+        with self.assertRaises(DuplicateIdError):
+            store.append(make_message_with(2, "test:0001"))
+
+    def test_rejects_non_increasing_sequence(self):
+        store = SnapshotStore()
+        store.append(make_message_with(5, "a"))
+        with self.assertRaises(NonIncreasingSequenceError):
+            store.append(make_message_with(5, "b"))
+        with self.assertRaises(NonIncreasingSequenceError):
+            store.append(make_message_with(4, "c"))
+
+    def test_evicted_id_can_be_reused_after_bound(self):
+        store = SnapshotStore(max_messages=2)
+        store.append(make_message_with(1, "old"))
+        store.append(make_message_with(2, "b"))
+        store.append(make_message_with(3, "c"))
+        store.append(make_message_with(4, "old"))
+        self.assertEqual([m.sequence for m in store.list()], [3, 4])
 
 
 class DistributionHubTests(unittest.IsolatedAsyncioTestCase):
@@ -135,6 +181,37 @@ class DistributionHubTests(unittest.IsolatedAsyncioTestCase):
         hub = DistributionHub()
         with self.assertRaises(TypeError):
             hub.publish({"id": "x"})
+
+    async def test_publish_rejects_duplicate_id_before_snapshot_and_broadcast(self):
+        hub = DistributionHub()
+        subscriber = hub.subscribe()
+        hub.publish(make_message_with(1, "dup"))
+        with self.assertRaises(DuplicateIdError):
+            hub.publish(make_message_with(2, "dup"))
+        self.assertEqual([m.sequence for m in hub.snapshot()], [1])
+        hub.publish(make_message_with(2, "fresh"))
+        self.assertEqual((await subscriber.receive()).sequence, 1)
+        self.assertEqual((await subscriber.receive()).sequence, 2)
+
+    async def test_publish_rejects_non_increasing_sequence(self):
+        hub = DistributionHub()
+        hub.publish(make_message_with(5, "a"))
+        with self.assertRaises(NonIncreasingSequenceError):
+            hub.publish(make_message_with(5, "b"))
+        with self.assertRaises(NonIncreasingSequenceError):
+            hub.publish(make_message_with(4, "c"))
+        self.assertEqual([m.sequence for m in hub.snapshot()], [5])
+        hub.publish(make_message_with(6, "d"))
+        self.assertEqual([m.sequence for m in hub.snapshot()], [5, 6])
+
+    async def test_publish_rejects_duplicate_against_existing_snapshot_state(self):
+        store = SnapshotStore(max_messages=100)
+        hub = DistributionHub(store=store)
+        for sequence in range(1, 4):
+            hub.publish(make_message(sequence))
+        with self.assertRaises(DuplicateIdError):
+            hub.publish(make_message_with(4, "test:0002"))
+        self.assertEqual([m.sequence for m in hub.snapshot()], [1, 2, 3])
 
 
 if __name__ == "__main__":

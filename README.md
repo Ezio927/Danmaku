@@ -12,8 +12,13 @@ A loopback-only HTTP/WebSocket service that composes the canonical core with
 
 ```bash
 python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install .
 ```
+
+This installs the `danmaku` package from this `src/`-layout project together
+with its sole runtime dependency (`aiohttp`), and packages the OBS web assets
+(`index.html`, `app.js`, `style.css`) as package data so `python -m danmaku`
+serves them from an installed environment.
 
 ## Run
 

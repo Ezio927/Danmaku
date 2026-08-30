@@ -6,11 +6,23 @@ from collections import deque
 
 from .model import Message
 
-__all__ = ["SnapshotStore"]
+__all__ = ["DuplicateIdError", "NonIncreasingSequenceError", "SnapshotStore"]
+
+
+class DuplicateIdError(ValueError):
+    """Raised when a message id is already present in the snapshot."""
+
+
+class NonIncreasingSequenceError(ValueError):
+    """Raised when a message sequence does not strictly increase."""
 
 
 class SnapshotStore:
     """Retains the latest ``max_messages`` messages in insertion order.
+
+    Appends are ordered and unique: a message whose id is already present, or
+    whose sequence does not strictly exceed the latest stored sequence, is
+    rejected before it enters the snapshot.
 
     ``list()`` returns an immutable oldest-first copy.
     """
@@ -24,13 +36,22 @@ class SnapshotStore:
             raise ValueError("max_messages must be a positive integer")
         self._max_messages = max_messages
         self._messages: deque[Message] = deque()
+        self._ids: set[str] = set()
 
     def append(self, message: Message) -> None:
         if not isinstance(message, Message):
             raise TypeError("append requires a Message")
+        if self._messages and message.sequence <= self._messages[-1].sequence:
+            raise NonIncreasingSequenceError(
+                f"sequence must strictly increase: "
+                f"{message.sequence} <= {self._messages[-1].sequence}"
+            )
+        if message.id in self._ids:
+            raise DuplicateIdError(f"duplicate message id: {message.id!r}")
         self._messages.append(message)
+        self._ids.add(message.id)
         while len(self._messages) > self._max_messages:
-            self._messages.popleft()
+            self._ids.discard(self._messages.popleft().id)
 
     def list(self) -> tuple[Message, ...]:
         return tuple(self._messages)

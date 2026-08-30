@@ -211,6 +211,19 @@ class ProtocolHttpTests(_AppMixin, unittest.IsolatedAsyncioTestCase):
                 resp = await getattr(self.client, method)("/health")
                 self.assertEqual(resp.status, 405)
 
+    async def test_head_405_on_every_frozen_get_route(self):
+        for path in ("/health", "/obs", "/assets/app.js", "/ws"):
+            with self.subTest(path=path):
+                resp = await self.client.head(path)
+                self.assertEqual(resp.status, 405)
+
+    async def test_every_non_get_method_405_on_every_frozen_get_route(self):
+        for path in ("/health", "/obs", "/assets/app.js", "/ws"):
+            for method in ("post", "put", "delete", "patch", "options"):
+                with self.subTest(path=path, method=method):
+                    resp = await getattr(self.client, method)(path)
+                    self.assertEqual(resp.status, 405)
+
     async def test_unknown_route_404(self):
         resp = await self.client.get("/nope")
         self.assertEqual(resp.status, 404)
