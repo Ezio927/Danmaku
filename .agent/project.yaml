@@ -22,6 +22,15 @@
       "secrets": "forbidden-in-first-vertical-slice",
       "database": "not-applicable",
       "deployment": "not-applicable"
+    },
+    "github": {
+      "enabled": true,
+      "repository": "Ezio927/Danmaku",
+      "remote": "origin",
+      "defaultBranch": "main",
+      "branchPublicationAllowed": true,
+      "pullRequestAllowed": true,
+      "ciRequired": true
     }
   }
 }
