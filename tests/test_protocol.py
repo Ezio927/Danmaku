@@ -30,6 +30,16 @@ FIXTURES = ROOT / "docs" / "protocol-fixtures"
 HELLO = '{"protocolVersion":1,"type":"hello","payload":{}}'
 
 
+def _fixed_clock() -> int:
+    """Deterministic clock that keeps every fixed 2026-01-01 fixture in-window.
+
+    Returning the epoch places the snapshot-retention cutoff at epoch minus
+    five minutes, so no fixture timestamp is ever trimmed. Tests that exercise
+    the retention window itself inject their own clock instead.
+    """
+    return 0
+
+
 def _load_fixture(name):
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
@@ -166,7 +176,7 @@ class ClassifyClientFrameTests(unittest.TestCase):
 
 class _AppMixin:
     async def asyncSetUp(self):
-        self.hub = DistributionHub()
+        self.hub = DistributionHub(clock=_fixed_clock)
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         (root / "index.html").write_text("<html>obs</html>", encoding="utf-8")
