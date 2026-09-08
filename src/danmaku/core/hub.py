@@ -1,9 +1,17 @@
-"""Ordered distribution hub with independent bounded subscriptions."""
+"""Ordered distribution hub with independently bounded subscriptions.
+
+Each subscriber owns a bounded FIFO queue. Under overload, the oldest queued
+ordinary danmaku (``kind == "danmaku"``) is evicted to admit the next message;
+paid interactions (gift, guard, superChat) are never evicted. A full queue with
+no evictable danmaku refuses the offer and the hub fails that subscriber closed
+through the existing slow-client close.
+"""
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections import deque
+from typing import Callable
 
 from .aggregation import GiftAggregator
 from .model import Message
@@ -24,11 +32,23 @@ class SubscriptionClosed(Exception):
         super().__init__(message)
 
 
-_SENTINEL = object()
+#: The only message kind eligible for overload eviction. Everything else is a
+#: paid interaction that must never be silently dropped from a queue.
+_EVICTABLE_KIND = "danmaku"
+
+#: WebSocket close code for a slow subscriber whose full queue has no evictable
+#: ordinary danmaku.
+_SLOW_SUBSCRIBER_CLOSE = 1013
 
 
 class Subscription:
-    """A bounded per-subscriber queue with async receive and explicit close."""
+    """A bounded per-subscriber FIFO queue with async receive and explicit close.
+
+    The queue is bounded at ``capacity`` retained messages. When it is full, the
+    oldest queued ordinary danmaku is evicted to admit the new message. Paid
+    interactions (gift, guard, superChat) are never evicted; a full queue with no
+    evictable danmaku refuses the offer so the hub can close the subscriber.
+    """
 
     def __init__(self, capacity: int = 100) -> None:
         if (
@@ -37,7 +57,9 @@ class Subscription:
             or capacity < 1
         ):
             raise ValueError("capacity must be a positive integer")
-        self._queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=capacity)
+        self._capacity = capacity
+        self._queue: deque[Message] = deque()
+        self._event = asyncio.Event()
         self._closed = False
         self._close_code: int | None = None
 
@@ -49,26 +71,40 @@ class Subscription:
     def close_code(self) -> int | None:
         return self._close_code
 
-    def _offer(self, message: Message) -> None:
-        self._queue.put_nowait(message)
+    def _offer(self, message: Message) -> bool:
+        """Admit ``message``, evicting the oldest queued danmaku if full.
+
+        Returns ``True`` when the message was admitted (with or without an
+        eviction) and ``False`` when the queue is full and contains no
+        evictable ordinary danmaku, so the caller must close the subscriber.
+        """
+        if len(self._queue) < self._capacity:
+            self._queue.append(message)
+            self._event.set()
+            return True
+        for index, queued in enumerate(self._queue):
+            if queued.kind == _EVICTABLE_KIND:
+                del self._queue[index]
+                self._queue.append(message)
+                self._event.set()
+                return True
+        return False
 
     def close(self, code: int | None = 1000) -> None:
         if self._closed:
             return
         self._closed = True
         self._close_code = code
-        try:
-            self._queue.put_nowait(_SENTINEL)
-        except asyncio.QueueFull:
-            pass
+        self._event.set()
 
     async def receive(self) -> Message:
-        if self._closed and self._queue.empty():
-            raise SubscriptionClosed(self._close_code)
-        item = await self._queue.get()
-        if item is _SENTINEL:
-            raise SubscriptionClosed(self._close_code)
-        return item
+        while True:
+            self._event.clear()
+            if self._queue:
+                return self._queue.popleft()
+            if self._closed:
+                raise SubscriptionClosed(self._close_code)
+            await self._event.wait()
 
 
 class DistributionHub:
@@ -149,10 +185,8 @@ class DistributionHub:
             if subscription.closed:
                 self._subscribers.remove(subscription)
                 continue
-            try:
-                subscription._offer(message)
-            except asyncio.QueueFull:
-                subscription.close(code=1013)
+            if not subscription._offer(message):
+                subscription.close(code=_SLOW_SUBSCRIBER_CLOSE)
 
     def snapshot(self) -> tuple[Message, ...]:
         return self._store.list()
