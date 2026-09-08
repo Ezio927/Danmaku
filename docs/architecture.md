@@ -42,8 +42,10 @@ deterministic MockSource
 
 Core does not import `aiohttp` or browser code. The service composes the core
 and serializes the frozen protocol. The OBS page consumes only protocol frames.
-Each WebSocket client has an independent bounded outbound queue; a slow or
-failed client is closed without delaying the hub or other clients.
+Each WebSocket client has an independent bounded outbound queue. Under overload,
+the oldest queued ordinary danmaku is evicted to admit the next message while
+gift, guard, and super-chat messages are preserved; a slow or failed client with
+no evictable danmaku is closed without delaying the hub or other clients.
 
 ## Security and failure boundary
 

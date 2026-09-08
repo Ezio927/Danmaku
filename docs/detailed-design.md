@@ -15,8 +15,11 @@ evicted, so a duplicate id is rejected even after its payload leaves the
 snapshot. `DistributionHub.publish(message)` validates, appends, assigns no new
 identity, and offers the same message to subscribers in publish order.
 Subscriptions expose async receive and explicit close; each has capacity 100.
-If a subscriber queue is full, that subscriber is closed with WebSocket code
-1013 rather than dropping or reordering messages.
+When a subscriber queue is full, the oldest queued ordinary danmaku is evicted
+to admit the new message while retained messages stay FIFO; gift, guard, and
+super-chat messages are never evicted. A full queue with no evictable danmaku
+fails that subscriber closed with WebSocket code 1013 rather than dropping a
+paid interaction.
 
 The aiohttp composition root owns source, hub, store, runner, and client tasks.
 Startup binds `127.0.0.1` at configured port, then starts the producer. Bind

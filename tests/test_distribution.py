@@ -136,7 +136,17 @@ class DistributionHubTests(unittest.IsolatedAsyncioTestCase):
         slow = hub.subscribe()
         fast = hub.subscribe()
 
-        messages = [make_message(sequence) for sequence in range(1, 5)]
+        # A full queue of paid interactions has no evictable danmaku, so the
+        # slow subscriber fails closed with 1013 without dropping a paid message.
+        messages = [
+            make_message(sequence, kind)
+            for sequence, kind in (
+                (1, "guard"),
+                (2, "superChat"),
+                (3, "guard"),
+                (4, "superChat"),
+            )
+        ]
 
         for message in messages[:3]:
             hub.publish(message)

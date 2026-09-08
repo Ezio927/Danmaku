@@ -447,9 +447,12 @@ class ProtocolWebSocketTests(_AppMixin, unittest.IsolatedAsyncioTestCase):
         try:
             ws = await client.ws_connect("/ws")
             await ws.receive()  # empty snapshot
-            hub.publish(make_message(1))
-            hub.publish(make_message(2))
-            hub.publish(make_message(3))
+            # A full queue of paid interactions has no evictable danmaku, so
+            # the slow client fails closed with 1013 without dropping a paid
+            # interaction.
+            hub.publish(make_message(1, "guard"))
+            hub.publish(make_message(2, "superChat"))
+            hub.publish(make_message(3, "guard"))
             frames, close_code = await self._drain(ws)
             self.assertEqual(
                 [json.loads(f.data)["payload"]["message"]["sequence"] for f in frames],
