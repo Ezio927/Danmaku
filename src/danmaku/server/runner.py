@@ -97,6 +97,10 @@ class Service:
                 await self._producer
             self._producer = None
 
+        # Flush pending aggregated gifts so no accepted gift disappears on
+        # normal shutdown.
+        self._hub.finalize()
+
         app = self._app
         if app is not None:
             for subscription in list(app[SUBSCRIPTIONS_KEY]):

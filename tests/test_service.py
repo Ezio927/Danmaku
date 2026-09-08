@@ -48,6 +48,24 @@ def make_message(sequence, kind="danmaku"):
     )
 
 
+def make_gift(sequence, quantity=1, amount_milli_cny=1000):
+    return Message.from_dict(
+        {
+            "id": f"svc-gift:{sequence:04d}",
+            "sequence": sequence,
+            "receivedAt": "2026-01-01T00:00:00.000Z",
+            "source": "mock",
+            "kind": "gift",
+            "user": {"id": "user:bob", "name": "Bob"},
+            "data": {
+                "giftName": "Star",
+                "quantity": quantity,
+                "totalAmountMilliCny": amount_milli_cny,
+            },
+        }
+    )
+
+
 class ConfigTests(unittest.TestCase):
     def _valid(self):
         return {
@@ -300,6 +318,41 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
             snapshot = service.hub.snapshot()
             self.assertGreaterEqual(len(snapshot), 1)
             self.assertEqual(snapshot[0].kind, "danmaku")
+        finally:
+            await service.stop()
+
+    async def test_pending_gift_flushed_on_normal_shutdown(self):
+        service = await self._start(cadence_milliseconds=60000)
+        try:
+            # Wait for the producer's first danmaku so the snapshot is stable.
+            for _ in range(1000):
+                if len(service.hub.snapshot()) >= 1:
+                    break
+                await asyncio.sleep(0.005)
+            async with aiohttp.ClientSession() as sess:
+                async with sess.ws_connect(self._url(service, "/ws")) as ws:
+                    snapshot = json.loads((await ws.receive()).data)
+                    self.assertEqual(
+                        [m["sequence"] for m in snapshot["payload"]["messages"]],
+                        [1],
+                    )
+                    await ws.send_str(HELLO)
+                    service.hub.publish(make_gift(100, quantity=2, amount_milli_cny=1000))
+                    service.hub.publish(make_gift(101, quantity=3, amount_milli_cny=1500))
+                    await service.stop()
+
+                    frame = json.loads((await ws.receive()).data)
+                    self.assertEqual(frame["type"], "message.created")
+                    message = frame["payload"]["message"]
+                    self.assertEqual(message["kind"], "gift")
+                    self.assertEqual(message["sequence"], 100)
+                    self.assertEqual(message["data"]["quantity"], 5)
+                    self.assertEqual(message["data"]["totalAmountMilliCny"], 2500)
+
+                    close = await ws.receive()
+                    self.assertEqual(close.type, aiohttp.WSMsgType.CLOSE)
+                    self.assertEqual(close.data, 1001)
+                    await ws.close()
         finally:
             await service.stop()
 

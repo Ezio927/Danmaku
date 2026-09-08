@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
+from .aggregation import GiftAggregator
 from .model import Message
 from .snapshot import SnapshotStore
 
@@ -71,13 +72,19 @@ class Subscription:
 
 
 class DistributionHub:
-    """Validates, stores, and offers each message to subscribers in order.
+    """Validates, stores, aggregates, filters, and distributes messages in order.
+
+    The canonical ``SnapshotStore`` always receives the original, un-aggregated
+    message unchanged. The delivery path — subscriber increments and
+    :meth:`filtered_snapshot` — instead exposes the result of running each
+    message through the injected ``aggregator`` (default
+    :class:`GiftAggregator`) and then the optional ``filter`` predicate, so the
+    snapshot and live delivery always agree on the same aggregate result.
 
     ``filter`` is an optional predicate ``(Message) -> bool`` returning ``True``
-    for messages that must be suppressed from delivery. Suppressed messages are
-    still appended to the canonical ``SnapshotStore``; they are only excluded
-    from the filtered snapshot and from subscriber delivery, using the same
-    decision on both paths.
+    for messages that must be suppressed from delivery. ``aggregator`` must
+    expose ``accept(Message) -> tuple[Message, ...]`` and
+    ``finalize() -> tuple[Message, ...]``.
     """
 
     def __init__(
@@ -85,6 +92,7 @@ class DistributionHub:
         store: SnapshotStore | None = None,
         capacity: int = 100,
         filter: Callable[[Message], bool] | None = None,
+        aggregator: GiftAggregator | None = None,
     ) -> None:
         self._store = store if store is not None else SnapshotStore()
         if (
@@ -95,9 +103,22 @@ class DistributionHub:
             raise ValueError("capacity must be a positive integer")
         if filter is not None and not callable(filter):
             raise TypeError("filter must be callable or None")
+        if aggregator is None:
+            aggregator = GiftAggregator()
+        elif not (
+            callable(getattr(aggregator, "accept", None))
+            and callable(getattr(aggregator, "finalize", None))
+        ):
+            raise TypeError("aggregator must expose accept() and finalize()")
         self._capacity = capacity
         self._filter = filter
+        self._aggregator = aggregator
+        self._delivered = SnapshotStore(max_messages=self._store.max_messages)
         self._subscribers: list[Subscription] = []
+
+    @property
+    def aggregator(self) -> GiftAggregator:
+        return self._aggregator
 
     def subscribe(self) -> Subscription:
         subscription = Subscription(capacity=self._capacity)
@@ -108,8 +129,22 @@ class DistributionHub:
         if not isinstance(message, Message):
             raise TypeError("publish requires a Message")
         self._store.append(message)
+        for delivered in self._aggregator.accept(message):
+            self._deliver(delivered)
+
+    def finalize(self) -> None:
+        """Emit any pending aggregated gifts through the delivery path.
+
+        Idempotent: after a finalize, later calls emit nothing until another
+        pending aggregate forms.
+        """
+        for delivered in self._aggregator.finalize():
+            self._deliver(delivered)
+
+    def _deliver(self, message: Message) -> None:
         if self._filter is not None and self._filter(message):
             return
+        self._delivered.append(message)
         for subscription in list(self._subscribers):
             if subscription.closed:
                 self._subscribers.remove(subscription)
@@ -123,12 +158,10 @@ class DistributionHub:
         return self._store.list()
 
     def filtered_snapshot(self) -> tuple[Message, ...]:
-        """Return the oldest-first snapshot with suppressed messages excluded.
+        """Return the oldest-first delivery snapshot.
 
-        Uses the same filter as live delivery so a client's snapshot and its
-        increments never disagree on which messages are delivered.
+        This is the canonical snapshot with ordinary gifts aggregated and
+        suppressed messages excluded. It matches exactly what a subscriber has
+        been offered, so a client's snapshot and its increments never disagree.
         """
-        messages = self._store.list()
-        if self._filter is None:
-            return messages
-        return tuple(message for message in messages if not self._filter(message))
+        return self._delivered.list()
