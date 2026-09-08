@@ -58,6 +58,10 @@ class SnapshotStore:
         while len(self._messages) > self._max_messages:
             self._messages.popleft()
 
+    @property
+    def max_messages(self) -> int:
+        return self._max_messages
+
     def list(self) -> tuple[Message, ...]:
         return tuple(self._messages)
 

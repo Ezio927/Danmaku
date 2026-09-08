@@ -443,8 +443,12 @@ class ServiceFilteringIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 async with sess.ws_connect(self._url(service, "/ws")) as ws:
                     await ws.receive()
                     await ws.send_str(HELLO)
-                    service.hub.publish(gift(200, 499))  # below threshold
-                    service.hub.publish(gift(201, 500))  # at threshold
+                    # Distinct users so the two gifts do not aggregate; the
+                    # below-threshold gift is suppressed and the at-threshold
+                    # gift is delivered once its aggregate is finalized.
+                    service.hub.publish(gift(200, 499, user_id="user:low"))
+                    service.hub.publish(gift(201, 500, user_id="user:high"))
+                    service.hub.finalize()
                     frame = json.loads((await ws.receive()).data)
                     self.assertEqual(frame["payload"]["message"]["sequence"], 201)
                     self.assertEqual(
