@@ -154,12 +154,20 @@ class DistributionHub:
     snapshot to ``snapshot_retention_milliseconds``. The canonical
     :meth:`snapshot` and live subscriber delivery are never affected by the
     clock.
+
+    ``delivered_capacity`` bounds the OBS delivery snapshot exposed by
+    :meth:`filtered_snapshot`, independently of the canonical ``store`` bound
+    and of the per-subscriber ``capacity``. The host timeline may therefore
+    retain up to ``store.max_messages`` accepted messages (for example 1000)
+    while the OBS reconnect snapshot and per-client backpressure stay capped at
+    their own (for example 100) limits.
     """
 
     def __init__(
         self,
         store: SnapshotStore | None = None,
         capacity: int = 100,
+        delivered_capacity: int = 100,
         filter: Callable[[Message], bool] | None = None,
         aggregator: GiftAggregator | None = None,
         clock: Callable[[], int] | None = None,
@@ -172,6 +180,12 @@ class DistributionHub:
             or capacity < 1
         ):
             raise ValueError("capacity must be a positive integer")
+        if (
+            isinstance(delivered_capacity, bool)
+            or not isinstance(delivered_capacity, int)
+            or delivered_capacity < 1
+        ):
+            raise ValueError("delivered_capacity must be a positive integer")
         if filter is not None and not callable(filter):
             raise TypeError("filter must be callable or None")
         if aggregator is None:
@@ -192,16 +206,21 @@ class DistributionHub:
                 "snapshot_retention_milliseconds must be a non-negative integer"
             )
         self._capacity = capacity
+        self._delivered_capacity = delivered_capacity
         self._filter = filter
         self._aggregator = aggregator
         self._clock = clock if clock is not None else _default_clock
         self._snapshot_retention_milliseconds = snapshot_retention_milliseconds
-        self._delivered = SnapshotStore(max_messages=self._store.max_messages)
+        self._delivered = SnapshotStore(max_messages=delivered_capacity)
         self._subscribers: list[Subscription] = []
 
     @property
     def aggregator(self) -> GiftAggregator:
         return self._aggregator
+
+    @property
+    def delivered_capacity(self) -> int:
+        return self._delivered_capacity
 
     def subscribe(self) -> Subscription:
         subscription = Subscription(capacity=self._capacity)
@@ -245,10 +264,10 @@ class DistributionHub:
         suppressed messages excluded, then trimmed to messages whose
         ``receivedAt`` is within ``snapshot_retention_milliseconds`` of the
         injected clock. The lower boundary is inclusive and the result is capped
-        at ``max_messages`` entries by the delivered store. The trim is applied
-        on read, so a reconnecting client receives the most recent five minutes
-        without affecting live subscriber delivery or the complete canonical
-        :meth:`snapshot`.
+        at ``delivered_capacity`` entries by the delivered store. The trim is
+        applied on read, so a reconnecting client receives the most recent five
+        minutes without affecting live subscriber delivery or the complete
+        canonical :meth:`snapshot`.
         """
         cutoff = self._clock() - self._snapshot_retention_milliseconds
         return tuple(

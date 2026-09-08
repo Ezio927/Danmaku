@@ -18,10 +18,16 @@ from .app import SUBSCRIPTIONS_KEY, WS_DONE_KEY, create_app
 from .config import ServiceConfig
 from .filtering import FilteringPolicy
 
-__all__ = ["Service"]
+__all__ = ["HOST_TIMELINE_MAX_MESSAGES", "Service"]
 
 _SHUTDOWN_TIMEOUT = 5.0
 _SUBSCRIPTION_CLOSE = 1001
+
+#: The host timeline retains the product-required most recent 1000 messages,
+#: independent of the OBS delivery snapshot bound (``snapshot.maxMessages``).
+#: The OBS reconnect snapshot and per-client backpressure queues stay capped at
+#: the configured 100 messages.
+HOST_TIMELINE_MAX_MESSAGES = 1000
 
 
 class Service:
@@ -29,6 +35,11 @@ class Service:
 
     Owns the hub, producer, and aiohttp runner. Bind conflicts are fatal and
     never select a different host or port silently.
+
+    The canonical host timeline retains up to :data:`HOST_TIMELINE_MAX_MESSAGES`
+    messages while OBS delivery — the reconnect snapshot and each client's
+    backpressure queue — stays capped at the configured ``snapshot.maxMessages``
+    (100).
     """
 
     def __init__(
@@ -42,8 +53,9 @@ class Service:
         self._asset_root = asset_root
         self._policy = policy if policy is not None else config.build_policy()
         self._hub = DistributionHub(
-            store=SnapshotStore(max_messages=config.max_messages),
+            store=SnapshotStore(max_messages=HOST_TIMELINE_MAX_MESSAGES),
             capacity=config.max_messages,
+            delivered_capacity=config.max_messages,
             filter=self._policy.is_suppressed,
             clock=clock,
         )
