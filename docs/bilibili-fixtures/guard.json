@@ -1,0 +1,7 @@
+{
+  "cmd": "GUARD_BUY",
+  "eventId": "g-300001",
+  "timestamp": 1735689602000,
+  "user": {"uid": "10003", "uname": "Dana"},
+  "data": {"guardLevel": 1, "num": 1}
+}

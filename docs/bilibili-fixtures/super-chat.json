@@ -1,0 +1,7 @@
+{
+  "cmd": "SUPER_CHAT_MESSAGE",
+  "eventId": "s-400001",
+  "timestamp": 1735689603000,
+  "user": {"uid": "10004", "uname": "Carol"},
+  "data": {"message": "Great stream", "priceMilliCny": 30000, "time": 60}
+}

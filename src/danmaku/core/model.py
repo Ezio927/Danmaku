@@ -94,8 +94,8 @@ def _validate_id(value: Any, field: str) -> str:
 
 
 def _validate_source(value: Any) -> str:
-    if value != "mock":
-        raise ValidationError("source must be 'mock'")
+    if value not in ("mock", "bilibili"):
+        raise ValidationError("source must be 'mock' or 'bilibili'")
     return value
 
 

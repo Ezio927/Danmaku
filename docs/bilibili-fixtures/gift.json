@@ -1,0 +1,7 @@
+{
+  "cmd": "SEND_GIFT",
+  "eventId": "g-200001",
+  "timestamp": 1735689601000,
+  "user": {"uid": "10002", "uname": "Bob"},
+  "data": {"giftName": "Star", "num": 2, "unitPriceMilliCny": 500}
+}
