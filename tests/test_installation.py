@@ -14,6 +14,7 @@ from an installed environment, without introducing any runtime dependency:
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.resources
 import os
 import subprocess
@@ -26,6 +27,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from danmaku.server.app import DEFAULT_ASSET_ROOT  # noqa: E402
+from danmaku.server.config import ConfigError, ServiceConfig  # noqa: E402
+from danmaku.server.config_store import default_config_path  # noqa: E402
 
 WEB_ASSETS = ("index.html", "app.js", "style.css")
 
@@ -86,20 +89,66 @@ class EntryPointStartupTests(unittest.TestCase):
         self.assertIn("--port", result.stdout)
         self.assertIn("--cadence-milliseconds", result.stdout)
         self.assertIn("--gift-threshold-milli-cny", result.stdout)
+        self.assertIn("--config", result.stdout)
 
-    def test_parse_args_defaults_match_documented_values(self):
+    def test_parse_args_defaults_are_none_for_precedence(self):
         from danmaku.__main__ import _parse_args
 
         args = _parse_args([])
-        self.assertEqual(args.port, 17391)
-        self.assertEqual(args.cadence_milliseconds, 1000)
-        self.assertEqual(args.gift_threshold_milli_cny, 100)
+        self.assertIsNone(args.port)
+        self.assertIsNone(args.cadence_milliseconds)
+        self.assertIsNone(args.gift_threshold_milli_cny)
+        self.assertIsNone(args.config)
+
+    def test_config_flag_is_parsed(self):
+        from danmaku.__main__ import _parse_args
+
+        args = _parse_args(["--config", "/tmp/example/config.json"])
+        self.assertEqual(args.config, Path("/tmp/example/config.json"))
 
     def test_gift_threshold_flag_is_parsed(self):
         from danmaku.__main__ import _parse_args
 
         args = _parse_args(["--gift-threshold-milli-cny", "500"])
         self.assertEqual(args.gift_threshold_milli_cny, 500)
+
+
+class StartupPrecedenceTests(unittest.TestCase):
+    def test_resolve_config_path_prefers_flag(self):
+        from danmaku.__main__ import _parse_args, _resolve_config_path
+
+        args = _parse_args(["--config", "/tmp/example/config.json"])
+        self.assertEqual(_resolve_config_path(args), Path("/tmp/example/config.json"))
+
+    def test_resolve_config_path_falls_back_to_default(self):
+        from danmaku.__main__ import _parse_args, _resolve_config_path
+
+        self.assertEqual(_resolve_config_path(_parse_args([])), default_config_path())
+
+    def test_apply_overrides_cli_wins_over_persisted(self):
+        from danmaku.__main__ import _apply_overrides, _parse_args
+
+        persisted = dataclasses.replace(
+            ServiceConfig.default(), port=18000, gift_threshold_milli_cny=500
+        )
+        merged = _apply_overrides(persisted, _parse_args(["--port", "19000"]))
+        self.assertEqual(merged.port, 19000)
+        # threshold was not provided on the CLI, so its persisted value survives
+        self.assertEqual(merged.gift_threshold_milli_cny, 500)
+
+    def test_apply_overrides_without_flags_keeps_persisted(self):
+        from danmaku.__main__ import _apply_overrides, _parse_args
+
+        persisted = dataclasses.replace(ServiceConfig.default(), port=18000)
+        merged = _apply_overrides(persisted, _parse_args([]))
+        self.assertEqual(merged.port, 18000)
+        self.assertEqual(merged.cadence_milliseconds, 1000)
+
+    def test_apply_overrides_rejects_out_of_bound_cli_value(self):
+        from danmaku.__main__ import _apply_overrides, _parse_args
+
+        with self.assertRaises(ConfigError):
+            _apply_overrides(ServiceConfig.default(), _parse_args(["--port", "70000"]))
 
 
 if __name__ == "__main__":

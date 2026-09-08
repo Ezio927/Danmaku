@@ -35,6 +35,27 @@ The service binds exactly `127.0.0.1` and exposes:
 
 The default OBS URL is `http://127.0.0.1:17391/obs`.
 
+## Configuration
+
+Startup configuration — including the OBS filtering settings (denied user IDs
+and nicknames, denied keywords, and the ordinary-gift threshold) — is persisted
+as a versioned JSON file at a deterministic local location
+(`~/.config/danmaku/config.json` on Linux/macOS, `%APPDATA%\danmaku\config.json`
+on Windows; override with `$DANMAKU_CONFIG` or `--config PATH`). See
+`docs/configuration-schema.md` for the full schema, strict rejection rules,
+backup and fallback behavior, and the documented precedence:
+
+1. canonical defaults;
+2. persisted values from the JSON file;
+3. explicit CLI overrides (`--port`, `--cadence-milliseconds`,
+   `--gift-threshold-milli-cny`).
+
+A missing file loads canonical defaults (including the `100` milli-CNY gift
+threshold and empty deny lists). A corrupt file falls back to the single
+retained backup, then to defaults, and prints a diagnostic to standard error.
+Saves use a same-filesystem temporary file and an atomic rename, retaining one
+previously valid backup.
+
 ## Test
 
 Run the full suite:

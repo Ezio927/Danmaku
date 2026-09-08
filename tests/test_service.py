@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from danmaku.core.model import Message  # noqa: E402
 from danmaku.server.config import ConfigError, ServiceConfig  # noqa: E402
+from danmaku.server.filtering import FilteringPolicy  # noqa: E402
 from danmaku.server.runner import Service  # noqa: E402
 
 HELLO = '{"protocolVersion":1,"type":"hello","payload":{}}'
@@ -54,6 +55,12 @@ class ConfigTests(unittest.TestCase):
             "service": {"host": "127.0.0.1", "port": 17391},
             "mock": {"cadenceMilliseconds": 1000},
             "snapshot": {"maxMessages": 100},
+            "obs": {
+                "denyUserIds": [],
+                "denyNicknames": [],
+                "keywords": [],
+                "giftThresholdMilliCny": 100,
+            },
         }
 
     def test_defaults(self):
@@ -114,6 +121,23 @@ class ConfigTests(unittest.TestCase):
     def test_max_messages_must_be_100(self):
         with self.assertRaises(ConfigError):
             ServiceConfig(max_messages=50)
+
+
+class ServicePolicyTests(unittest.TestCase):
+    def test_service_derives_policy_from_config_when_none_passed(self):
+        config = dataclasses.replace(
+            ServiceConfig.default(),
+            deny_user_ids=frozenset({"user:alice"}),
+            gift_threshold_milli_cny=500,
+        )
+        service = Service(config)
+        self.assertEqual(service.policy.deny_user_ids, frozenset({"user:alice"}))
+        self.assertEqual(service.policy.gift_threshold_milli_cny, 500)
+
+    def test_service_prefers_explicit_policy(self):
+        explicit = FilteringPolicy(gift_threshold_milli_cny=777)
+        service = Service(ServiceConfig.default(), policy=explicit)
+        self.assertIs(service.policy, explicit)
 
 
 class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
