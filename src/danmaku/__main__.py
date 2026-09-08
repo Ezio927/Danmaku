@@ -14,6 +14,10 @@ from danmaku.server.config import (
     ConfigError,
     ServiceConfig,
 )
+from danmaku.server.filtering import (
+    DEFAULT_GIFT_THRESHOLD_MILLI_CNY,
+    FilteringPolicy,
+)
 from danmaku.server.runner import Service
 
 
@@ -37,6 +41,15 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
             f"(default: {DEFAULT_CADENCE_MILLISECONDS})"
         ),
     )
+    parser.add_argument(
+        "--gift-threshold-milli-cny",
+        type=int,
+        default=DEFAULT_GIFT_THRESHOLD_MILLI_CNY,
+        help=(
+            "ordinary gift delivery threshold in milli-CNY; gifts below it are "
+            f"suppressed (default: {DEFAULT_GIFT_THRESHOLD_MILLI_CNY})"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -48,11 +61,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             port=args.port,
             cadence_milliseconds=args.cadence_milliseconds,
         )
-    except ConfigError as exc:
+        policy = FilteringPolicy(
+            gift_threshold_milli_cny=args.gift_threshold_milli_cny
+        )
+    except (ConfigError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    service = Service(config)
+    service = Service(config, policy=policy)
     try:
         asyncio.run(service.run())
     except KeyboardInterrupt:

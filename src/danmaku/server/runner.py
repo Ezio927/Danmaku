@@ -15,6 +15,7 @@ from danmaku.mock.source import MockSource
 
 from .app import SUBSCRIPTIONS_KEY, WS_DONE_KEY, create_app
 from .config import ServiceConfig
+from .filtering import FilteringPolicy
 
 __all__ = ["Service"]
 
@@ -30,13 +31,18 @@ class Service:
     """
 
     def __init__(
-        self, config: ServiceConfig, asset_root: Path | str | None = None
+        self,
+        config: ServiceConfig,
+        asset_root: Path | str | None = None,
+        policy: FilteringPolicy | None = None,
     ) -> None:
         self._config = config
         self._asset_root = asset_root
+        self._policy = policy if policy is not None else FilteringPolicy()
         self._hub = DistributionHub(
             store=SnapshotStore(max_messages=config.max_messages),
             capacity=config.max_messages,
+            filter=self._policy.is_suppressed,
         )
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None
@@ -46,6 +52,10 @@ class Service:
     @property
     def hub(self) -> DistributionHub:
         return self._hub
+
+    @property
+    def policy(self) -> FilteringPolicy:
+        return self._policy
 
     @property
     def host(self) -> str:

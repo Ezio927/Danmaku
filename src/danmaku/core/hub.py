@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Callable
 
 from .model import Message
 from .snapshot import SnapshotStore
@@ -71,10 +71,20 @@ class Subscription:
 
 
 class DistributionHub:
-    """Validates, stores, and offers each message to subscribers in order."""
+    """Validates, stores, and offers each message to subscribers in order.
+
+    ``filter`` is an optional predicate ``(Message) -> bool`` returning ``True``
+    for messages that must be suppressed from delivery. Suppressed messages are
+    still appended to the canonical ``SnapshotStore``; they are only excluded
+    from the filtered snapshot and from subscriber delivery, using the same
+    decision on both paths.
+    """
 
     def __init__(
-        self, store: SnapshotStore | None = None, capacity: int = 100
+        self,
+        store: SnapshotStore | None = None,
+        capacity: int = 100,
+        filter: Callable[[Message], bool] | None = None,
     ) -> None:
         self._store = store if store is not None else SnapshotStore()
         if (
@@ -83,7 +93,10 @@ class DistributionHub:
             or capacity < 1
         ):
             raise ValueError("capacity must be a positive integer")
+        if filter is not None and not callable(filter):
+            raise TypeError("filter must be callable or None")
         self._capacity = capacity
+        self._filter = filter
         self._subscribers: list[Subscription] = []
 
     def subscribe(self) -> Subscription:
@@ -95,6 +108,8 @@ class DistributionHub:
         if not isinstance(message, Message):
             raise TypeError("publish requires a Message")
         self._store.append(message)
+        if self._filter is not None and self._filter(message):
+            return
         for subscription in list(self._subscribers):
             if subscription.closed:
                 self._subscribers.remove(subscription)
@@ -106,3 +121,14 @@ class DistributionHub:
 
     def snapshot(self) -> tuple[Message, ...]:
         return self._store.list()
+
+    def filtered_snapshot(self) -> tuple[Message, ...]:
+        """Return the oldest-first snapshot with suppressed messages excluded.
+
+        Uses the same filter as live delivery so a client's snapshot and its
+        increments never disagree on which messages are delivered.
+        """
+        messages = self._store.list()
+        if self._filter is None:
+            return messages
+        return tuple(message for message in messages if not self._filter(message))
