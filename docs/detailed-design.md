@@ -7,19 +7,25 @@
 sequence seed; it emits danmaku, gift, guard, and super chat cyclically using
 fixed fixture-equivalent values. Its cancellation is normal shutdown.
 
-`SnapshotStore.append(message)` retains the latest 100 messages and returns no
-transport objects. `SnapshotStore.list()` returns an immutable oldest-first
-copy. The payload snapshot is bounded at 100 messages, but the store keeps every
-accepted canonical id in a process-lifetime `seen_ids` set that is never
-evicted, so a duplicate id is rejected even after its payload leaves the
-snapshot. `DistributionHub.publish(message)` validates, appends, assigns no new
-identity, and offers the same message to subscribers in publish order.
-Subscriptions expose async receive and explicit close; each has capacity 100.
-When a subscriber queue is full, the oldest queued ordinary danmaku is evicted
-to admit the new message while retained messages stay FIFO; gift, guard, and
-super-chat messages are never evicted. A full queue with no evictable danmaku
-fails that subscriber closed with WebSocket code 1013 rather than dropping a
-paid interaction.
+`SnapshotStore.append(message)` retains the latest messages up to its configured
+bound and returns no transport objects. `SnapshotStore.list()` returns an
+immutable oldest-first copy. The canonical host timeline payload snapshot is
+bounded at 1000 messages, but the store keeps every accepted canonical id in a
+process-lifetime `seen_ids` set that is never evicted, so a duplicate id is
+rejected even after its payload leaves the snapshot. `DistributionHub.publish(message)`
+validates, appends, assigns no new identity, and offers the same message to
+subscribers in publish order. Subscriptions expose async receive and explicit
+close; each has capacity 100. When a subscriber queue is full, the oldest queued
+ordinary danmaku is evicted to admit the new message while retained messages
+stay FIFO; gift, guard, and super-chat messages are never evicted. A full queue
+with no evictable danmaku fails that subscriber closed with WebSocket code 1013
+rather than dropping a paid interaction.
+
+The host timeline and OBS delivery are independently bounded. The canonical
+`SnapshotStore` is created with the 1000-message host capacity, while the OBS
+delivery snapshot (`DistributionHub.filtered_snapshot()`) is capped at the
+configured `snapshot.maxMessages` (100) and the per-client backpressure queue at
+the same 100-message delivery bound. See `docs/host-timeline-retention.md`.
 
 The aiohttp composition root owns source, hub, store, runner, and client tasks.
 Startup binds `127.0.0.1` at configured port, then starts the producer. Bind

@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from danmaku.core.model import Message  # noqa: E402
 from danmaku.server.config import ConfigError, ServiceConfig  # noqa: E402
 from danmaku.server.filtering import FilteringPolicy  # noqa: E402
-from danmaku.server.runner import Service  # noqa: E402
+from danmaku.server.runner import HOST_TIMELINE_MAX_MESSAGES, Service  # noqa: E402
 
 HELLO = '{"protocolVersion":1,"type":"hello","payload":{}}'
 
@@ -180,6 +180,26 @@ class ServicePolicyTests(unittest.TestCase):
         explicit = FilteringPolicy(gift_threshold_milli_cny=777)
         service = Service(ServiceConfig.default(), policy=explicit)
         self.assertIs(service.policy, explicit)
+
+
+class ServiceCompositionTests(unittest.TestCase):
+    def test_host_timeline_capacity_constant_is_1000(self):
+        self.assertEqual(HOST_TIMELINE_MAX_MESSAGES, 1000)
+
+    def test_service_composes_1000_host_timeline_and_100_obs_capacity(self):
+        service = Service(ServiceConfig.default(), clock=_fixed_clock)
+        hub = service.hub
+        self.assertEqual(hub.delivered_capacity, 100)
+        for sequence in range(1, 1011):
+            hub.publish(make_message(sequence))
+        host = hub.snapshot()
+        self.assertEqual(len(host), 1000)
+        self.assertEqual(host[0].sequence, 11)
+        self.assertEqual(host[-1].sequence, 1010)
+        delivered = hub.filtered_snapshot()
+        self.assertEqual(len(delivered), 100)
+        self.assertEqual(delivered[0].sequence, 911)
+        self.assertEqual(delivered[-1].sequence, 1010)
 
 
 class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
