@@ -31,6 +31,16 @@ def at(offset_millis: int) -> str:
     return f"{value.strftime('%Y-%m-%dT%H:%M:%S')}.{value.microsecond // 1000:03d}Z"
 
 
+def _fixed_clock() -> int:
+    """Deterministic clock that keeps every fixed 2026-01-01 fixture in-window.
+
+    Returning the epoch places the snapshot-retention cutoff at epoch minus
+    five minutes, so no fixture timestamp is ever trimmed. Tests that exercise
+    the retention window itself inject their own clock instead.
+    """
+    return 0
+
+
 def make_gift(
     sequence: int,
     *,
@@ -249,7 +259,7 @@ class GiftAggregatorTests(unittest.TestCase):
 
 class DistributionHubAggregationTests(unittest.IsolatedAsyncioTestCase):
     async def test_consecutive_gifts_aggregate_on_delivery(self):
-        hub = DistributionHub()
+        hub = DistributionHub(clock=_fixed_clock)
         subscriber = hub.subscribe()
         hub.publish(make_gift(1, quantity=2, amount_milli_cny=1000))
         hub.publish(make_gift(2, quantity=3, amount_milli_cny=1500))
@@ -270,7 +280,7 @@ class DistributionHubAggregationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delivered[0].data["quantity"], 5)
 
     async def test_canonical_store_stays_unaggregated(self):
-        hub = DistributionHub()
+        hub = DistributionHub(clock=_fixed_clock)
         hub.publish(make_gift(1, quantity=2, amount_milli_cny=1000))
         hub.publish(make_gift(2, quantity=3, amount_milli_cny=1500))
         hub.finalize()
@@ -283,7 +293,7 @@ class DistributionHubAggregationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(delivered[0].data["quantity"], 5)
 
     async def test_finalize_flushes_pending_to_delivery(self):
-        hub = DistributionHub()
+        hub = DistributionHub(clock=_fixed_clock)
         subscriber = hub.subscribe()
         hub.publish(make_gift(1))
         self.assertEqual(hub.filtered_snapshot(), ())
@@ -292,7 +302,7 @@ class DistributionHubAggregationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m.sequence for m in hub.filtered_snapshot()], [1])
 
     async def test_delivery_sequence_stays_strictly_increasing(self):
-        hub = DistributionHub()
+        hub = DistributionHub(clock=_fixed_clock)
         subscriber = hub.subscribe()
         hub.publish(make_non_gift(1, "danmaku"))
         hub.publish(make_gift(2))
@@ -314,7 +324,7 @@ class DistributionHubAggregationTests(unittest.IsolatedAsyncioTestCase):
                 and message.data["totalAmountMilliCny"] < 1000
             )
 
-        hub = DistributionHub(filter=below_thousand)
+        hub = DistributionHub(filter=below_thousand, clock=_fixed_clock)
         subscriber = hub.subscribe()
         hub.publish(make_gift(1, amount_milli_cny=600))
         hub.publish(make_gift(2, amount_milli_cny=600))

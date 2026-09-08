@@ -34,6 +34,16 @@ from danmaku.server.runner import Service  # noqa: E402
 
 HELLO = '{"protocolVersion":1,"type":"hello","payload":{}}'
 
+
+def _fixed_clock() -> int:
+    """Deterministic clock that keeps every fixed 2026-01-01 fixture in-window.
+
+    Returning the epoch places the snapshot-retention cutoff at epoch minus
+    five minutes, so no fixture timestamp is ever trimmed. Tests that exercise
+    the retention window itself inject their own clock instead.
+    """
+    return 0
+
 _DEFAULT_DATA = {
     "danmaku": {"text": "hello world"},
     "gift": {"giftName": "Star", "quantity": 2, "totalAmountMilliCny": 1000},
@@ -340,7 +350,7 @@ class DistributionHubFilteringTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_filtered_snapshot_excludes_suppressed(self):
         policy = FilteringPolicy(keywords=["secret"])
-        hub = DistributionHub(filter=policy.is_suppressed)
+        hub = DistributionHub(filter=policy.is_suppressed, clock=_fixed_clock)
         hub.publish(make_message(1, kind="danmaku", data={"text": "hello"}))
         hub.publish(make_message(2, kind="danmaku", data={"text": "a secret"}))
         hub.publish(make_message(3, kind="danmaku", data={"text": "bye"}))
@@ -348,7 +358,7 @@ class DistributionHubFilteringTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_subscriber_queue_excludes_suppressed(self):
         policy = FilteringPolicy(keywords=["secret"])
-        hub = DistributionHub(filter=policy.is_suppressed)
+        hub = DistributionHub(filter=policy.is_suppressed, clock=_fixed_clock)
         subscriber = hub.subscribe()
         hub.publish(make_message(1, kind="danmaku", data={"text": "hello"}))
         hub.publish(make_message(2, kind="danmaku", data={"text": "a secret"}))
@@ -358,7 +368,7 @@ class DistributionHubFilteringTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_same_decision_for_snapshot_and_live_delivery(self):
         policy = FilteringPolicy(keywords=["secret"])
-        hub = DistributionHub(filter=policy.is_suppressed)
+        hub = DistributionHub(filter=policy.is_suppressed, clock=_fixed_clock)
         subscriber = hub.subscribe()
         hub.publish(make_message(1, kind="danmaku", data={"text": "hello"}))
         hub.publish(make_message(2, kind="danmaku", data={"text": "a secret"}))
@@ -388,12 +398,13 @@ class ServiceFilteringIntegrationTests(unittest.IsolatedAsyncioTestCase):
         return f"http://127.0.0.1:{service.port}{path}"
 
     async def _start(self, policy, **kwargs):
+        clock = kwargs.pop("clock", None)
         config = self._config(
             port=kwargs.pop("port", self._free_port()),
             cadence_milliseconds=kwargs.pop("cadence_milliseconds", 60000),
             **kwargs,
         )
-        service = Service(config, policy=policy)
+        service = Service(config, policy=policy, clock=clock)
         await service.start()
         return service
 
@@ -459,7 +470,7 @@ class ServiceFilteringIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_filtered_snapshot_excludes_suppressed_messages(self):
         policy = FilteringPolicy(deny_user_ids={"user:alice"})
-        service = await self._start(policy)
+        service = await self._start(policy, clock=_fixed_clock)
         try:
             await self._wait_for_producer(service)
             # Publish before connecting so both messages sit in the store.

@@ -66,6 +66,30 @@ def make_gift(sequence, quantity=1, amount_milli_cny=1000):
     )
 
 
+def make_message_at(sequence, received_at):
+    return Message.from_dict(
+        {
+            "id": f"svc:{sequence:04d}",
+            "sequence": sequence,
+            "receivedAt": received_at,
+            "source": "mock",
+            "kind": "danmaku",
+            "user": {"id": "user:alice", "name": "Alice"},
+            "data": {"text": "hello"},
+        }
+    )
+
+
+def _fixed_clock() -> int:
+    """Deterministic clock that keeps every fixed 2026-01-01 fixture in-window.
+
+    Returning the epoch places the snapshot-retention cutoff at epoch minus
+    five minutes, so no fixture timestamp is ever trimmed. Tests that exercise
+    the retention window itself inject their own clock instead.
+    """
+    return 0
+
+
 class ConfigTests(unittest.TestCase):
     def _valid(self):
         return {
@@ -173,11 +197,11 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
     def _config(self, **kwargs):
         return dataclasses.replace(ServiceConfig.default(), **kwargs)
 
-    async def _start(self, port=None, **kwargs):
+    async def _start(self, port=None, clock=None, **kwargs):
         config = self._config(
             port=port if port is not None else _free_port(), **kwargs
         )
-        service = Service(config, asset_root=self.root)
+        service = Service(config, asset_root=self.root, clock=clock)
         await service.start()
         return service
 
@@ -248,7 +272,7 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
             await service.stop()
 
     async def test_reconnect_receives_replacement_snapshot(self):
-        service = await self._start(cadence_milliseconds=60000)
+        service = await self._start(cadence_milliseconds=60000, clock=_fixed_clock)
         try:
             async with aiohttp.ClientSession() as sess:
                 async with sess.ws_connect(self._url(service, "/ws")) as ws:
@@ -268,6 +292,44 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIn(
                         100, [m["sequence"] for m in snapshot["payload"]["messages"]]
                     )
+        finally:
+            await service.stop()
+
+    async def test_reconnect_snapshot_excludes_stale_messages(self):
+        from datetime import datetime, timedelta, timezone
+
+        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        base = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+        def millis(value: str) -> int:
+            parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+            delta = parsed - epoch
+            return delta.days * 86_400_000 + delta.seconds * 1000 + delta.microseconds // 1000
+
+        def at(offset_millis: int) -> str:
+            value = base + timedelta(milliseconds=offset_millis)
+            return f"{value.strftime('%Y-%m-%dT%H:%M:%S')}.{value.microsecond // 1000:03d}Z"
+
+        # A fixed clock at base + 5 minutes: messages exactly five minutes old
+        # stay in-window while older messages are trimmed.
+        service = await self._start(
+            cadence_milliseconds=60000, clock=lambda: millis(at(0)) + 300_000
+        )
+        try:
+            for _ in range(1000):
+                if len(service.hub.snapshot()) >= 1:
+                    break
+                await asyncio.sleep(0.005)
+            service.hub.publish(make_message_at(100, at(-1)))
+            service.hub.publish(make_message_at(101, at(0)))
+            async with aiohttp.ClientSession() as sess:
+                async with sess.ws_connect(self._url(service, "/ws")) as ws:
+                    snapshot = json.loads((await ws.receive()).data)
+                    sequences = [
+                        m["sequence"] for m in snapshot["payload"]["messages"]
+                    ]
+                    self.assertNotIn(100, sequences)
+                    self.assertIn(101, sequences)
         finally:
             await service.stop()
 

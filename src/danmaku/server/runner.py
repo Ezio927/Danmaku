@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import signal
 from pathlib import Path
+from typing import Callable
 
 from aiohttp import web
 
@@ -35,6 +36,7 @@ class Service:
         config: ServiceConfig,
         asset_root: Path | str | None = None,
         policy: FilteringPolicy | None = None,
+        clock: Callable[[], int] | None = None,
     ) -> None:
         self._config = config
         self._asset_root = asset_root
@@ -43,6 +45,7 @@ class Service:
             store=SnapshotStore(max_messages=config.max_messages),
             capacity=config.max_messages,
             filter=self._policy.is_suppressed,
+            clock=clock,
         )
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None

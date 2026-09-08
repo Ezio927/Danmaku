@@ -10,14 +10,40 @@ through the existing slow-client close.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import deque
+from datetime import datetime, timezone
 from typing import Callable
 
 from .aggregation import GiftAggregator
 from .model import Message
 from .snapshot import SnapshotStore
 
-__all__ = ["DistributionHub", "Subscription", "SubscriptionClosed"]
+__all__ = [
+    "SNAPSHOT_RETENTION_MILLISECONDS",
+    "DistributionHub",
+    "Subscription",
+    "SubscriptionClosed",
+]
+
+#: OBS reconnect snapshots retain only messages received within this fixed
+#: window of the injected clock. The boundary is inclusive: a message exactly
+#: this old is still included.
+SNAPSHOT_RETENTION_MILLISECONDS = 300_000
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _received_at_millis(value: str) -> int:
+    """Return the exact integer millisecond offset of an RFC 3339 timestamp."""
+    parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    delta = parsed - _EPOCH
+    return delta.days * 86_400_000 + delta.seconds * 1000 + delta.microseconds // 1000
+
+
+def _default_clock() -> int:
+    """Return the current UTC instant in integer milliseconds since the epoch."""
+    return time.time_ns() // 1_000_000
 
 
 class SubscriptionClosed(Exception):
@@ -121,6 +147,13 @@ class DistributionHub:
     for messages that must be suppressed from delivery. ``aggregator`` must
     expose ``accept(Message) -> tuple[Message, ...]`` and
     ``finalize() -> tuple[Message, ...]``.
+
+    ``clock`` is an optional zero-argument callable returning the current UTC
+    instant in integer milliseconds since the epoch. It is the deterministic
+    timestamp seam used by :meth:`filtered_snapshot` to trim the delivery
+    snapshot to ``snapshot_retention_milliseconds``. The canonical
+    :meth:`snapshot` and live subscriber delivery are never affected by the
+    clock.
     """
 
     def __init__(
@@ -129,6 +162,8 @@ class DistributionHub:
         capacity: int = 100,
         filter: Callable[[Message], bool] | None = None,
         aggregator: GiftAggregator | None = None,
+        clock: Callable[[], int] | None = None,
+        snapshot_retention_milliseconds: int = SNAPSHOT_RETENTION_MILLISECONDS,
     ) -> None:
         self._store = store if store is not None else SnapshotStore()
         if (
@@ -146,9 +181,21 @@ class DistributionHub:
             and callable(getattr(aggregator, "finalize", None))
         ):
             raise TypeError("aggregator must expose accept() and finalize()")
+        if clock is not None and not callable(clock):
+            raise TypeError("clock must be callable or None")
+        if (
+            isinstance(snapshot_retention_milliseconds, bool)
+            or not isinstance(snapshot_retention_milliseconds, int)
+            or snapshot_retention_milliseconds < 0
+        ):
+            raise ValueError(
+                "snapshot_retention_milliseconds must be a non-negative integer"
+            )
         self._capacity = capacity
         self._filter = filter
         self._aggregator = aggregator
+        self._clock = clock if clock is not None else _default_clock
+        self._snapshot_retention_milliseconds = snapshot_retention_milliseconds
         self._delivered = SnapshotStore(max_messages=self._store.max_messages)
         self._subscribers: list[Subscription] = []
 
@@ -192,10 +239,20 @@ class DistributionHub:
         return self._store.list()
 
     def filtered_snapshot(self) -> tuple[Message, ...]:
-        """Return the oldest-first delivery snapshot.
+        """Return the oldest-first delivery snapshot within the retention window.
 
         This is the canonical snapshot with ordinary gifts aggregated and
-        suppressed messages excluded. It matches exactly what a subscriber has
-        been offered, so a client's snapshot and its increments never disagree.
+        suppressed messages excluded, then trimmed to messages whose
+        ``receivedAt`` is within ``snapshot_retention_milliseconds`` of the
+        injected clock. The lower boundary is inclusive and the result is capped
+        at ``max_messages`` entries by the delivered store. The trim is applied
+        on read, so a reconnecting client receives the most recent five minutes
+        without affecting live subscriber delivery or the complete canonical
+        :meth:`snapshot`.
         """
-        return self._delivered.list()
+        cutoff = self._clock() - self._snapshot_retention_milliseconds
+        return tuple(
+            message
+            for message in self._delivered.list()
+            if _received_at_millis(message.received_at) >= cutoff
+        )
