@@ -1,0 +1,1 @@
+{"protocolVersion":1,"type":"message.created","payload":{"message":{"id":"mock:0002","sequence":2,"receivedAt":"2026-01-01T00:00:01.000Z","source":"mock","kind":"gift","user":{"id":"user:bob","name":"Bob"},"data":{"giftName":"Star","quantity":2,"totalAmountMilliCny":1000}}}}

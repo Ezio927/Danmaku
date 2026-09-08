@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "danmaku",
+    "repository": "/home/ezio/projects/Danmaku",
+    "primaryBranch": "main",
+    "integrationBranch": "dev",
+    "runtime": {
+      "language": "python",
+      "version": "3.12",
+      "packageSystem": "pip"
+    },
+    "protectedPaths": [
+      ".git/**",
+      ".github/**",
+      "credentials/**",
+      "deployment/**"
+    ],
+    "boundaries": {
+      "listenHost": "127.0.0.1",
+      "networkExposure": "loopback-only",
+      "secrets": "forbidden-in-first-vertical-slice",
+      "database": "not-applicable",
+      "deployment": "not-applicable"
+    },
+    "github": {
+      "enabled": true,
+      "repository": "Ezio927/Danmaku",
+      "remote": "origin",
+      "defaultBranch": "main",
+      "branchPublicationAllowed": true,
+      "pullRequestAllowed": true,
+      "ciRequired": true
+    }
+  }
+}

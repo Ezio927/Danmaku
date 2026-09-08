@@ -1,0 +1,1 @@
+{"protocolVersion":1,"type":"message.created","payload":{"message":{"id":"mock:0004","sequence":4,"receivedAt":"2026-01-01T00:00:03.000Z","source":"mock","kind":"superChat","user":{"id":"user:carol","name":"Carol"},"data":{"text":"Great stream","amountMilliCny":30000,"durationSeconds":60}}}}
