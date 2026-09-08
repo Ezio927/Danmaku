@@ -38,7 +38,7 @@ class Service:
     ) -> None:
         self._config = config
         self._asset_root = asset_root
-        self._policy = policy if policy is not None else FilteringPolicy()
+        self._policy = policy if policy is not None else config.build_policy()
         self._hub = DistributionHub(
             store=SnapshotStore(max_messages=config.max_messages),
             capacity=config.max_messages,
