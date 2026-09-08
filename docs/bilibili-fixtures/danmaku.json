@@ -1,0 +1,7 @@
+{
+  "cmd": "DANMU_MSG",
+  "eventId": "d-100001",
+  "timestamp": 1735689600000,
+  "user": {"uid": "10001", "uname": "Alice"},
+  "data": {"text": "主播好！"}
+}

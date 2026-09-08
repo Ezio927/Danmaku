@@ -167,9 +167,12 @@ class ScalarValidationTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Message.from_dict(value)
 
-    def test_source_must_be_mock(self):
+    def test_source_must_be_mock_or_bilibili(self):
         value = self._valid()
+        self.assertEqual(Message.from_dict(value).source, "mock")
         value["source"] = "bilibili"
+        self.assertEqual(Message.from_dict(value).source, "bilibili")
+        value["source"] = "twitch"
         with self.assertRaises(ValidationError):
             Message.from_dict(value)
 
@@ -415,9 +418,10 @@ class CanonicalConstructionTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self._message(kind="superchat")
 
-    def test_message_direct_construction_rejects_non_mock_source(self):
+    def test_message_direct_construction_rejects_unknown_source(self):
         with self.assertRaises(ValidationError):
-            self._message(source="bilibili")
+            self._message(source="twitch")
+        self.assertEqual(self._message(source="bilibili").source, "bilibili")
 
     def test_message_direct_construction_rejects_invalid_received_at(self):
         with self.assertRaises(ValidationError):
