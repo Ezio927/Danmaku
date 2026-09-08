@@ -61,8 +61,19 @@ On disconnect, the page reconnects and treats the next snapshot as complete
 replacement state. It must not request replay or merge the old view. Multiple
 clients receive independent snapshots/queues and cannot affect each other.
 There are no client mutations, acknowledgements, update/delete frames, heartbeat
-application frames, filtering, style sync, compression promise, or resume token
-in v1.
+application frames, client-requested filtering, style sync, compression promise,
+or resume token in v1.
+
+## Server-side delivery filtering
+
+The service applies one immutable filtering policy per startup, shared by every
+connected client. A message the policy suppresses is excluded from the snapshot
+and from increments delivered to clients, but remains in the canonical host
+state. Filtering is purely server-side and silent: there is no client
+negotiation, no query parameter, no error frame, and no protocol change. A
+snapshot still holds 0–100 messages in strictly increasing sequence order, and
+an increment still increases; suppressed messages simply never appear, so
+sequences may contain gaps.
 
 ## Fixture index
 

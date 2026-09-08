@@ -85,6 +85,7 @@ class EntryPointStartupTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--port", result.stdout)
         self.assertIn("--cadence-milliseconds", result.stdout)
+        self.assertIn("--gift-threshold-milli-cny", result.stdout)
 
     def test_parse_args_defaults_match_documented_values(self):
         from danmaku.__main__ import _parse_args
@@ -92,6 +93,13 @@ class EntryPointStartupTests(unittest.TestCase):
         args = _parse_args([])
         self.assertEqual(args.port, 17391)
         self.assertEqual(args.cadence_milliseconds, 1000)
+        self.assertEqual(args.gift_threshold_milli_cny, 100)
+
+    def test_gift_threshold_flag_is_parsed(self):
+        from danmaku.__main__ import _parse_args
+
+        args = _parse_args(["--gift-threshold-milli-cny", "500"])
+        self.assertEqual(args.gift_threshold_milli_cny, 500)
 
 
 if __name__ == "__main__":

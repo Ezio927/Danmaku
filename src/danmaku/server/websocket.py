@@ -59,7 +59,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     hello_timeout = app[HELLO_TIMEOUT_KEY]
 
     subscription = hub.subscribe()
-    snapshot = hub.snapshot()
+    snapshot = hub.filtered_snapshot()
 
     app[SUBSCRIPTIONS_KEY].add(subscription)
     app[WEBSOCKETS_KEY].add(ws)
