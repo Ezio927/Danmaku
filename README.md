@@ -89,6 +89,14 @@ adds no route, changes no OBS protocol or filtering, and reports fixed
 success/failure feedback without surfacing exceptions or user content. See
 `docs/host-monitoring.md` for details.
 
+Each Host timeline item also exposes three view-local affordances — **Copy
+username** (copy the canonical `user.name`), **Copy text** (copy the canonical
+`data.text`, for danmaku and Super Chat), and **Details** (a concise read-only
+panel built only from existing canonical fields). They use the browser clipboard
+seam and DOM text APIs only, report fixed success/failure feedback without
+surfacing exceptions or user content, send no protocol frame, and never mutate
+canonical Host state, OBS delivery, filtering, or the deny-list actions.
+
 ## Test
 
 Run the full suite:

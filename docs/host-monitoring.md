@@ -299,6 +299,31 @@ target.
   `hello` frame), and adds no credentials, external network, public binding, or
   desktop framework.
 
+## Message copy and details
+
+Every Host timeline item also exposes three accessible, view-local affordances
+that never touch the network, the canonical Host state, OBS delivery, filtering,
+protocol v1, or the deny-list actions:
+
+- **Copy username.** A native `<button>` copies the canonical `user.name`
+  through the browser clipboard seam (`navigator.clipboard`), for every kind.
+- **Copy text.** A native `<button>` copies the canonical `data.text`, offered
+  only for the kinds that carry message text (`danmaku` and `superChat`).
+- **Details.** A native `<button>` opens a read-only, concise details panel
+  (`id="details-panel"`) built only from existing canonical fields — `kind`,
+  `user.id`, `user.name`, `receivedAt`, and the kind-specific `data` fields —
+  rendered with DOM text APIs only.
+
+Copy success and failure are reported with fixed strings — `Message text
+copied.`, `Could not copy the message text.`, `Username copied.`, `Could not
+copy the username.`, and `Copy is not available in this browser.` — through the
+existing `action-feedback` `role="status"` `aria-live="polite"` live region. No
+clipboard exception, stack, raw packet, credential, or unrelated private field
+is ever interpolated, and no protocol frame is sent (the Host client still sends
+exactly the frozen `hello` frame). The details panel is a view-local read-out of
+the already-received canonical message and never mutates canonical state or the
+timeline.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network
