@@ -33,6 +33,7 @@ control bar over the same dark timeline, bounded to view-local controls.
 ```text
 ┌──────────────── Host viewport ──────────────────────────┐
 │ [Skip]                                     [Clear]      │
+│ ● Local service: available  ● Host feed: connected      │
 │ ┌─ SC ¥30.00 · Cyan ─────────────────────────────────┐ │
 │ │ Carol: Great stream                                 │ │
 │ │ 2 pending · 47s remaining                           │ │
@@ -66,4 +67,11 @@ control bar over the same dark timeline, bounded to view-local controls.
   filtering, or the connection, and sends no protocol frame.
 - A snapshot replacement resets and reconstructs the view-local presentation
   state without replay animation.
+
+A compact status line above the top card shows two accessible indicators rendered
+only with DOM text APIs: the local service (`available` / `unavailable`, probed
+from the existing loopback `/health` route) and the Host feed (`connecting` /
+`connected` / `reconnecting` / `unavailable`, derived from the WebSocket
+lifecycle and its bounded reconnect schedule). No error details, secrets, or user
+content are ever surfaced, and the indicators send no protocol frame.
 

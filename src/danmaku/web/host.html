@@ -7,6 +7,16 @@
   <link rel="stylesheet" href="/assets/host.css">
 </head>
 <body>
+  <div id="status" class="status" role="status" aria-live="polite" aria-atomic="true" aria-label="Connection status">
+    <span id="service-status" class="status__item">
+      <span class="status__dot" aria-hidden="true"></span>
+      <span class="status__label" id="service-status-label"></span>
+    </span>
+    <span id="feed-status" class="status__item">
+      <span class="status__dot" aria-hidden="true"></span>
+      <span class="status__label" id="feed-status-label"></span>
+    </span>
+  </div>
   <section id="top-card" class="top-card" hidden aria-label="Top Super Chat presentation">
     <div class="top-card__row">
       <span class="top-card__tier" id="top-tier"></span>

@@ -302,6 +302,99 @@ class HostTopPresentationContract(unittest.TestCase):
         self.assertEqual(app.count("socket.send("), 1)
 
 
+class HostConnectionStatusStructure(unittest.TestCase):
+    def test_html_declares_status_region_and_indicators(self):
+        html = _read("host.html")
+        self.assertIn('id="status"', html)
+        self.assertIn('id="service-status"', html)
+        self.assertIn('id="feed-status"', html)
+        self.assertIn('id="service-status-label"', html)
+        self.assertIn('id="feed-status-label"', html)
+
+    def test_status_region_is_an_accessible_live_region(self):
+        html = _read("host.html")
+        self.assertIn('role="status"', html)
+        self.assertIn('aria-live="polite"', html)
+        self.assertIn('aria-atomic="true"', html)
+
+    def test_status_dots_are_decorative(self):
+        html = _read("host.html")
+        self.assertIn('class="status__dot" aria-hidden="true"', html)
+
+
+class HostConnectionStatusContract(unittest.TestCase):
+    def test_probes_only_the_existing_loopback_health_route(self):
+        app = _read("host.js")
+        self.assertIn('"/health"', app)
+        self.assertIn("http://127.0.0.1", app)
+        self.assertIn("fetch(healthUrl())", app)
+
+    def test_health_probe_adds_no_query_parameters(self):
+        app = _read("host.js")
+        self.assertNotIn("/health?", app)
+
+    def test_derives_all_four_deterministic_states(self):
+        app = _read("host.js")
+        for state in ("connecting", "connected", "reconnecting", "unavailable"):
+            self.assertIn(state, app)
+
+    def test_local_service_indicator_covers_available_and_unavailable(self):
+        app = _read("host.js")
+        self.assertIn("Local service: available", app)
+        self.assertIn("Local service: unavailable", app)
+
+    def test_host_feed_indicator_covers_all_four_states(self):
+        app = _read("host.js")
+        for text in (
+            "Host feed: connecting",
+            "Host feed: connected",
+            "Host feed: reconnecting",
+            "Host feed: unavailable",
+        ):
+            self.assertIn(text, app)
+
+    def test_feed_state_is_derived_from_websocket_ready_state(self):
+        app = _read("host.js")
+        self.assertIn("WebSocket.OPEN", app)
+        self.assertIn("WebSocket.CONNECTING", app)
+
+    def test_unavailable_is_derived_from_health_probe_failure(self):
+        app = _read("host.js")
+        self.assertIn("if (serviceUp === false)", app)
+
+    def test_status_labels_rendered_with_text_api_only(self):
+        app = _read("host.js")
+        self.assertIn("serviceStatusLabel.textContent", app)
+        self.assertIn("feedStatusLabel.textContent", app)
+        for sink in _FORBIDDEN_DOM_SINKS:
+            self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+    def test_status_labels_never_interpolate_error_details(self):
+        app = _read("host.js")
+        for leak in (
+            "event.reason",
+            "event.code",
+            "error.message",
+            "e.message",
+            "err.message",
+            ".stack",
+        ):
+            self.assertNotIn(leak, app, f"error detail leaked: {leak}")
+
+    def test_health_probe_adds_no_protocol_frame(self):
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+    def test_reconnect_schedule_remains_bounded(self):
+        app = _read("host.js")
+        self.assertIn(_RECONNECT_DELAYS_LITERAL, app)
+
+    def test_status_dot_colors_declared_for_each_state(self):
+        css = _read("host.css")
+        for state in ("available", "connected", "connecting", "reconnecting", "unavailable"):
+            self.assertIn(f"status__item--{state}", css)
+
+
 class HostPackagingTests(unittest.TestCase):
     def test_host_assets_declared_as_package_data(self):
         pyproject = tomllib.loads(

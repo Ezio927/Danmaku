@@ -22,9 +22,49 @@ body {
   line-height: 1.45;
 }
 
+#status {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 44px 12px 0;
+  font-size: 12px;
+  line-height: 1.2;
+  color: #9fb3c4;
+}
+
+.status__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5a6672;
+  flex: 0 0 auto;
+}
+
+.status__item--available .status__dot,
+.status__item--connected .status__dot {
+  background: #4cd98b;
+}
+
+.status__item--connecting .status__dot,
+.status__item--reconnecting .status__dot {
+  background: #f0c060;
+}
+
+.status__item--unavailable .status__dot {
+  background: #e8746f;
+}
+
 #top-card {
   flex: 0 0 auto;
-  margin: 44px 12px 6px;
+  margin: 6px 12px 6px;
   padding: 10px 12px;
   border-radius: 6px;
   border-left: 4px solid #5aa0e8;
