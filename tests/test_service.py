@@ -540,5 +540,80 @@ class ServiceSettingsTests(unittest.IsolatedAsyncioTestCase):
             await service.stop()
 
 
+class ServiceDenyTests(unittest.IsolatedAsyncioTestCase):
+    """Host context actions over the real loopback service.
+
+    A deny action persists one deny-list entry through the atomic config store
+    and reports restart-required, while the running policy and the complete
+    canonical Host timeline stay unchanged (no live apply seam).
+    """
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "index.html").write_text("<html>obs</html>", encoding="utf-8")
+        (self.root / "app.js").write_text("// js", encoding="utf-8")
+        (self.root / "style.css").write_text("/* css */", encoding="utf-8")
+        self.config_path = self.root / "config.json"
+
+    async def asyncTearDown(self):
+        self.tmp.cleanup()
+
+    def _url(self, service, path="/"):
+        return f"http://127.0.0.1:{service.port}{path}"
+
+    async def _start(self):
+        service = Service(
+            ServiceConfig(port=_free_port(), cadence_milliseconds=60000),
+            asset_root=self.root,
+            config_path=self.config_path,
+        )
+        await service.start()
+        return service
+
+    async def test_deny_action_persists_without_live_reload(self):
+        service = await self._start()
+        try:
+            before_policy = service.policy
+            async with aiohttp.ClientSession() as sess:
+                async with sess.post(
+                    self._url(service, "/host/deny"),
+                    json={"list": "denyUserIds", "value": "user:alice"},
+                ) as resp:
+                    self.assertEqual(resp.status, 200)
+                    data = await resp.json()
+                    self.assertTrue(data["saved"])
+                    self.assertTrue(data["restartRequired"])
+            result = load_config(self.config_path)
+            self.assertEqual(result.config.deny_user_ids, frozenset({"user:alice"}))
+            # No live reload: the running policy is untouched by the save.
+            self.assertIs(service.policy, before_policy)
+            self.assertEqual(service.policy.deny_user_ids, frozenset())
+        finally:
+            await service.stop()
+
+    async def test_deny_action_leaves_host_timeline_unchanged(self):
+        service = await self._start()
+        try:
+            # Wait for the producer's first danmaku (cadence is 60 s) so the
+            # timeline is stable before and after the config write.
+            for _ in range(1000):
+                if len(service.hub.snapshot()) >= 1:
+                    break
+                await asyncio.sleep(0.005)
+            service.hub.publish(make_message(100))
+            before = [m.id for m in service.hub.snapshot()]
+            async with aiohttp.ClientSession() as sess:
+                async with sess.post(
+                    self._url(service, "/host/deny"),
+                    json={"list": "denyUserIds", "value": "user:alice"},
+                ) as resp:
+                    self.assertEqual(resp.status, 200)
+            after = [m.id for m in service.hub.snapshot()]
+            self.assertEqual(after, before)
+        finally:
+            await service.stop()
+
+
 if __name__ == "__main__":
     unittest.main()

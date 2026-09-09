@@ -11,6 +11,7 @@ from danmaku.core.hub import DistributionHub
 from .config_store import default_config_path
 from .handlers import (
     asset_handler,
+    deny_handler,
     health_handler,
     host_handler,
     obs_handler,
@@ -60,6 +61,7 @@ def create_app(
     app.router.add_get("/host", host_handler, allow_head=False)
     app.router.add_get("/host/settings", settings_handler, allow_head=False)
     app.router.add_post("/host/settings", settings_handler)
+    app.router.add_post("/host/deny", deny_handler)
     app.router.add_get("/assets/{name}", asset_handler, allow_head=False)
     app.router.add_get("/ws", websocket_handler, allow_head=False)
     app.router.add_get("/ws/host", host_websocket_handler, allow_head=False)

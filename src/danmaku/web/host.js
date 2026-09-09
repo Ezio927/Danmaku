@@ -433,18 +433,28 @@
   function renderMessage(message) {
     var item = document.createElement("div");
     item.className = "item";
+    var rendered = null;
     switch (message.kind) {
       case "danmaku":
-        return renderDanmaku(item, message);
+        rendered = renderDanmaku(item, message);
+        break;
       case "gift":
-        return renderGift(item, message);
+        rendered = renderGift(item, message);
+        break;
       case "guard":
-        return renderGuard(item, message);
+        rendered = renderGuard(item, message);
+        break;
       case "superChat":
-        return renderSuperChat(item, message);
+        rendered = renderSuperChat(item, message);
+        break;
       default:
         return null;
     }
+    if (!rendered) {
+      return null;
+    }
+    appendActions(rendered, message);
+    return rendered;
   }
 
   function renderDanmaku(item, message) {
@@ -490,6 +500,80 @@
     span.className = className;
     span.textContent = text;
     return span;
+  }
+
+  // --- Host context actions ------------------------------------------------
+  // Each timeline item exposes two accessible, view-local actions that persist
+  // the represented user's existing OBS deny-list entry (stable ``user.id`` for
+  // ``denyUserIds`` and the normalized ``user.name`` for ``denyNicknames``)
+  // through the loopback ``/host/deny`` route. The server merges, deduplicates,
+  // validates, and atomically persists the full configuration; the running
+  // policy and canonical Host timeline are never changed, so a save reports
+  // restart-required. Every label and message is rendered with DOM text APIs
+  // only and no protocol frame is sent.
+  var actionFeedback = document.getElementById("action-feedback");
+
+  function denyUrl() {
+    var port = window.location.port || "17391";
+    return "http://127.0.0.1:" + port + "/host/deny";
+  }
+
+  function setActionFeedback(message, state) {
+    actionFeedback.textContent = message;
+    actionFeedback.className =
+      "action-feedback" + (state ? " action-feedback--" + state : "");
+    actionFeedback.hidden = !message;
+  }
+
+  function submitDeny(list, value) {
+    setActionFeedback("Saving block...");
+    fetch(denyUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ list: list, value: value })
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.data && result.data.saved) {
+          setActionFeedback("Blocked. Restart required to apply changes.", "ok");
+        } else {
+          var message =
+            result.data && result.data.error
+              ? result.data.error
+              : "Could not save block.";
+          setActionFeedback(message, "error");
+        }
+      })
+      .catch(function () {
+        setActionFeedback("Could not save block.", "error");
+      });
+  }
+
+  function actionButton(label, list, value) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "item__action";
+    button.textContent = label;
+    button.addEventListener("click", function () {
+      submitDeny(list, value);
+    });
+    return button;
+  }
+
+  function appendActions(item, message) {
+    var actions = document.createElement("div");
+    actions.className = "item__actions";
+    actions.appendChild(
+      actionButton("Block user", "denyUserIds", message.user.id)
+    );
+    actions.appendChild(
+      actionButton("Block nickname", "denyNicknames", message.user.name)
+    );
+    item.appendChild(actions);
   }
 
   function formatMoney(milliCny) {
