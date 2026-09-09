@@ -731,6 +731,70 @@
   settingsClose.addEventListener("click", closeSettings);
   settingsForm.addEventListener("submit", saveSettings);
 
+  // --- Host OBS setup --------------------------------------------------------
+  // A loopback-only setup surface that shows the existing OBS overlay URL — the
+  // current local service origin (fixed 127.0.0.1 plus the served port) with the
+  // /obs route appended — and copies it through the browser clipboard seam. It
+  // changes no OBS protocol, route, filtering, or Host timeline semantics. Every
+  // value and message is rendered with DOM text/value APIs only, and fixed
+  // success/failure feedback never surfaces clipboard exceptions or user content.
+  var obsToggle = document.getElementById("obs-toggle");
+  var obsPanel = document.getElementById("obs-panel");
+  var obsClose = document.getElementById("obs-close");
+  var obsCopyButton = document.getElementById("obs-copy");
+  var obsUrlInput = document.getElementById("obs-url");
+  var obsFeedback = document.getElementById("obs-feedback");
+
+  function obsUrl() {
+    var port = window.location.port || "17391";
+    return "http://127.0.0.1:" + port + "/obs";
+  }
+
+  function setObsFeedback(message, state) {
+    obsFeedback.textContent = message;
+    obsFeedback.className =
+      "settings__feedback" + (state ? " settings__feedback--" + state : "");
+  }
+
+  function populateObsUrl() {
+    obsUrlInput.value = obsUrl();
+  }
+
+  function copyObsUrl() {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+      setObsFeedback("Copy is not available in this browser.", "error");
+      return;
+    }
+    navigator.clipboard.writeText(obsUrl()).then(function () {
+      setObsFeedback("OBS URL copied.", "ok");
+    }).catch(function () {
+      setObsFeedback("Could not copy the OBS URL.", "error");
+    });
+  }
+
+  function openObsSetup() {
+    obsPanel.hidden = false;
+    obsToggle.setAttribute("aria-expanded", "true");
+    populateObsUrl();
+  }
+
+  function closeObsSetup() {
+    obsPanel.hidden = true;
+    obsToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleObsSetup() {
+    if (obsPanel.hidden) {
+      openObsSetup();
+    } else {
+      closeObsSetup();
+    }
+  }
+
+  obsToggle.addEventListener("click", toggleObsSetup);
+  obsClose.addEventListener("click", closeObsSetup);
+  obsCopyButton.addEventListener("click", copyObsUrl);
+
   startPresentationTicker();
   connect();
   probeHealth();

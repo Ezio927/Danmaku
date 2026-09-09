@@ -761,6 +761,89 @@ class HostContextActionsContract(unittest.TestCase):
             self.assertIn(selector, css)
 
 
+class HostObsSetupStructure(unittest.TestCase):
+    def test_html_declares_obs_setup_toggle_and_panel(self):
+        html = _read("host.html")
+        self.assertIn('id="obs-toggle"', html)
+        self.assertIn('id="obs-panel"', html)
+
+    def test_html_declares_obs_url_field_and_copy_control(self):
+        html = _read("host.html")
+        self.assertIn('id="obs-url"', html)
+        self.assertIn('id="obs-copy"', html)
+
+    def test_obs_url_field_is_readonly(self):
+        html = _read("host.html")
+        self.assertRegex(html, r'<input[^>]*id="obs-url"[^>]*readonly')
+
+    def test_obs_setup_controls_are_keyboard_accessible_buttons(self):
+        html = _read("host.html")
+        for control in ("obs-toggle", "obs-copy", "obs-close"):
+            self.assertRegex(html, rf'<button[^>]*id="{control}"')
+
+    def test_obs_feedback_is_an_accessible_live_region(self):
+        html = _read("host.html")
+        self.assertIn('id="obs-feedback"', html)
+        self.assertIn('role="status"', html)
+        self.assertIn('aria-live="polite"', html)
+
+    def test_obs_setup_guidance_describes_browser_source_workflow(self):
+        html = _read("host.html")
+        self.assertIn("Browser Source steps", html)
+        self.assertIn("Browser source", html)
+        self.assertIn("URL field", html)
+
+
+class HostObsSetupContract(unittest.TestCase):
+    def test_obs_url_derived_from_loopback_and_obs_route(self):
+        app = _read("host.js")
+        self.assertIn('"http://127.0.0.1:" + port + "/obs"', app)
+        self.assertIn("window.location.port", app)
+        self.assertIn("function obsUrl(", app)
+
+    def test_obs_url_is_displayed_with_value_api_only(self):
+        app = _read("host.js")
+        self.assertIn("obsUrlInput.value = obsUrl()", app)
+
+    def test_copy_uses_browser_clipboard_seam(self):
+        app = _read("host.js")
+        self.assertIn("navigator.clipboard", app)
+        self.assertIn("writeText", app)
+
+    def test_copy_reports_fixed_success_and_failure_feedback(self):
+        app = _read("host.js")
+        self.assertIn('"OBS URL copied."', app)
+        self.assertIn('"Could not copy the OBS URL."', app)
+        self.assertIn('"Copy is not available in this browser."', app)
+
+    def test_obs_feedback_rendered_with_text_api_only(self):
+        app = _read("host.js")
+        self.assertIn("obsFeedback.textContent", app)
+        for sink in _FORBIDDEN_DOM_SINKS:
+            self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+    def test_obs_setup_never_interpolate_error_details(self):
+        app = _read("host.js")
+        for leak in (
+            "event.reason",
+            "event.code",
+            "error.message",
+            "e.message",
+            "err.message",
+            ".stack",
+        ):
+            self.assertNotIn(leak, app, f"error detail leaked: {leak}")
+
+    def test_obs_setup_sends_no_websocket_protocol_frame(self):
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+    def test_obs_setup_styles_declared(self):
+        css = _read("host.css")
+        for selector in ("control--obs", "obs-copy", "obs-guidance"):
+            self.assertIn(selector, css)
+
+
 class HostSettingsHttpTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
