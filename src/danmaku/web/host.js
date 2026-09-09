@@ -919,10 +919,78 @@
     });
   }
 
+  // --- OBS message preview ---------------------------------------------------
+  // A deterministic, local-only preview of the four canonical OBS message kinds
+  // (danmaku, gift, guard, Super Chat). The samples are hardcoded: they are
+  // never read from the Host timeline, the running configuration, or Bilibili,
+  // and they are never sent to the core, the OBS WebSocket, or any network.
+  // Each item reuses the exact same kind renderers and presentation classes as
+  // the OBS overlay, but renders no action buttons, so the preview is inert and
+  // changes no runtime, filtering, or persistence state.
+  var previewList = document.getElementById("preview-list");
+
+  var PREVIEW_MESSAGES = [
+    {
+      kind: "danmaku",
+      user: { id: "preview:danmaku", name: "Sample" },
+      data: { text: "Hello from the preview!" }
+    },
+    {
+      kind: "gift",
+      user: { id: "preview:gift", name: "Sample" },
+      data: { giftName: "Star", quantity: 5, totalAmountMilliCny: 5000 }
+    },
+    {
+      kind: "guard",
+      user: { id: "preview:guard", name: "Sample" },
+      data: { tier: "captain", months: 3 }
+    },
+    {
+      kind: "superChat",
+      user: { id: "preview:super-chat", name: "Sample" },
+      data: { text: "Thanks for watching!", amountMilliCny: 30000, durationSeconds: 60 }
+    }
+  ];
+
+  function renderPreviewItem(message) {
+    var item = document.createElement("div");
+    item.className = "item";
+    switch (message.kind) {
+      case "danmaku":
+        return renderDanmaku(item, message);
+      case "gift":
+        return renderGift(item, message);
+      case "guard":
+        return renderGuard(item, message);
+      case "superChat":
+        return renderSuperChat(item, message);
+      default:
+        return null;
+    }
+  }
+
+  function clearPreview() {
+    while (previewList.firstChild) {
+      previewList.removeChild(previewList.firstChild);
+    }
+  }
+
+  function renderPreview() {
+    clearPreview();
+    for (var i = 0; i < PREVIEW_MESSAGES.length; i += 1) {
+      var item = renderPreviewItem(PREVIEW_MESSAGES[i]);
+      if (item) {
+        item.classList.add("preview__item");
+        previewList.appendChild(item);
+      }
+    }
+  }
+
   function openObsSetup() {
     obsPanel.hidden = false;
     obsToggle.setAttribute("aria-expanded", "true");
     populateObsUrl();
+    renderPreview();
   }
 
   function closeObsSetup() {

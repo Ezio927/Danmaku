@@ -844,6 +844,84 @@ class HostObsSetupContract(unittest.TestCase):
             self.assertIn(selector, css)
 
 
+class HostPreviewStructure(unittest.TestCase):
+    def test_html_declares_preview_region(self):
+        html = _read("host.html")
+        self.assertIn('id="preview-list"', html)
+
+    def test_preview_region_is_labeled(self):
+        html = _read("host.html")
+        self.assertIn("Message preview", html)
+
+    def test_preview_hint_marks_samples_as_local_and_inert(self):
+        html = _read("host.html")
+        self.assertIn("never sent to the core, OBS, or the network", html)
+
+
+class HostPreviewContract(unittest.TestCase):
+    def test_preview_data_is_hardcoded_and_deterministic(self):
+        app = _read("host.js")
+        self.assertIn("PREVIEW_MESSAGES", app)
+        for kind in ("danmaku", "gift", "guard", "superChat"):
+            self.assertIn(f'kind: "{kind}"', app)
+
+    def test_preview_reuses_existing_kind_renderers(self):
+        app = _read("host.js")
+        for call in (
+            "return renderDanmaku(item, message)",
+            "return renderGift(item, message)",
+            "return renderGuard(item, message)",
+            "return renderSuperChat(item, message)",
+        ):
+            self.assertIn(call, app)
+
+    def test_preview_path_renders_no_action_buttons(self):
+        app = _read("host.js")
+        match = re.search(r"function renderPreviewItem\(message\)\s*\{[^}]*\}", app)
+        self.assertIsNotNone(match, "renderPreviewItem must be defined")
+        body = match.group(0)
+        for token in ("appendActions", "actionButton", "submitDeny", "copyTextButton"):
+            self.assertNotIn(token, body, f"preview path must not add {token}")
+
+    def test_preview_rendered_when_obs_setup_opens(self):
+        app = _read("host.js")
+        match = re.search(r"function openObsSetup\(\)\s*\{[^}]*\}", app)
+        self.assertIsNotNone(match, "openObsSetup must be defined")
+        self.assertIn("renderPreview()", match.group(0))
+
+    def test_preview_data_is_literal_and_not_read_from_config(self):
+        app = _read("host.js")
+        self.assertIn("var PREVIEW_MESSAGES = [", app)
+        for token in (
+            "settingsPort.value",
+            "settingsCadence.value",
+            "settingsGiftThreshold.value",
+            "pendingQueue",
+            "knownIds",
+        ):
+            self.assertNotIn(token, app.split("var PREVIEW_MESSAGES = [", 1)[1])
+
+    def test_preview_sends_no_websocket_protocol_frame(self):
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+    def test_preview_renders_with_text_api_only(self):
+        app = _read("host.js")
+        self.assertIn("textContent", app)
+        for sink in _FORBIDDEN_DOM_SINKS:
+            self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+    def test_preview_reuses_obs_presentation_classes(self):
+        css = _read("host.css")
+        for selector in ("item--danmaku", "item--gift", "item--guard", "item--super-chat"):
+            self.assertIn(selector, css)
+
+    def test_preview_styles_declared(self):
+        css = _read("host.css")
+        for selector in ("preview__title", "preview__hint", "preview__list"):
+            self.assertIn(selector, css)
+
+
 class HostMessageActionsStructure(unittest.TestCase):
     def test_html_declares_details_panel_and_fields(self):
         html = _read("host.html")
