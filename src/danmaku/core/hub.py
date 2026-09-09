@@ -24,6 +24,7 @@ from typing import Callable
 from .aggregation import GiftAggregator
 from .model import Message
 from .snapshot import SnapshotStore
+from .superchat import SuperChatLifecycle
 
 __all__ = [
     "HOST_DELIVERY_CAPACITY",
@@ -179,6 +180,13 @@ class DistributionHub:
     original canonical message stream — before gift aggregation and without any
     OBS delivery filtering — so the host timeline is a faithful monitor of every
     accepted message while the OBS path stays filtered and aggregated.
+
+    ``superchat`` is the optional injected :class:`SuperChatLifecycle` that
+    models the host Super Chat top-presentation lifecycle. When omitted, the hub
+    composes one sharing this hub's ``clock`` seam. Every accepted
+    ``kind == "superChat"`` message is fed to it by :meth:`publish` after it is
+    retained in the canonical store, and it is exposed through the
+    :attr:`superchat` property.
     """
 
     def __init__(
@@ -191,6 +199,7 @@ class DistributionHub:
         aggregator: GiftAggregator | None = None,
         clock: Callable[[], int] | None = None,
         snapshot_retention_milliseconds: int = SNAPSHOT_RETENTION_MILLISECONDS,
+        superchat: SuperChatLifecycle | None = None,
     ) -> None:
         self._store = store if store is not None else SnapshotStore()
         if (
@@ -237,6 +246,11 @@ class DistributionHub:
         self._aggregator = aggregator
         self._clock = clock if clock is not None else _default_clock
         self._snapshot_retention_milliseconds = snapshot_retention_milliseconds
+        if superchat is not None and not isinstance(superchat, SuperChatLifecycle):
+            raise TypeError("superchat must be a SuperChatLifecycle or None")
+        self._superchat = (
+            superchat if superchat is not None else SuperChatLifecycle(clock=self._clock)
+        )
         self._delivered = SnapshotStore(max_messages=delivered_capacity)
         self._subscribers: list[Subscription] = []
         self._host_subscribers: list[Subscription] = []
@@ -244,6 +258,11 @@ class DistributionHub:
     @property
     def aggregator(self) -> GiftAggregator:
         return self._aggregator
+
+    @property
+    def superchat(self) -> SuperChatLifecycle:
+        """The composed host Super Chat top-presentation lifecycle."""
+        return self._superchat
 
     @property
     def delivered_capacity(self) -> int:
@@ -275,6 +294,8 @@ class DistributionHub:
             raise TypeError("publish requires a Message")
         self._store.append(message)
         self._deliver_host(message)
+        if message.kind == "superChat":
+            self._superchat.receive(message)
         for delivered in self._aggregator.accept(message):
             self._deliver(delivered)
 
