@@ -35,10 +35,13 @@ The service binds exactly `127.0.0.1` and exposes:
 - `GET /ws` — snapshot-first WebSocket with ordered `message.created` increments
 - `GET /ws/host` — snapshot-first Host WebSocket with the full 1000-message
   canonical host snapshot and unfiltered increments
+- `GET /host/settings` — the current non-secret configuration as JSON
+- `POST /host/settings` — validate and atomically persist a candidate
+  configuration (reports `restartRequired` on success)
 
 The default OBS URL is `http://127.0.0.1:17391/obs`. The default Host URL is
 `http://127.0.0.1:17391/host`. See `docs/host-monitoring.md` for the Host
-surface.
+surface and its settings panel.
 
 ## Configuration
 
@@ -60,6 +63,14 @@ threshold and empty deny lists). A corrupt file falls back to the single
 retained backup, then to defaults, and prints a diagnostic to standard error.
 Saves use a same-filesystem temporary file and an atomic rename, retaining one
 previously valid backup.
+
+The Host page (`/host`) includes a loopback-only settings panel for editing the
+six editable non-secret fields (`service.port`, `mock.cadenceMilliseconds`,
+`obs.denyUserIds`, `obs.denyNicknames`, `obs.keywords`, and
+`obs.giftThresholdMilliCny`). A save validates the candidate with
+`ServiceConfig` before persisting it atomically and reports that a restart is
+required to apply it; `service.host` stays `127.0.0.1` and
+`snapshot.maxMessages` stays `100`.
 
 ## Test
 

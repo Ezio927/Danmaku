@@ -8,7 +8,7 @@ unchanged.
 
 ## Routes
 
-Two additive routes serve the host surface (the OBS v1 contract in
+Additive routes serve the host surface (the OBS v1 contract in
 `docs/api-protocol.md` is unchanged):
 
 - `GET /host` → 200 UTF-8 HTML (the compact host page). All other methods → 405.
@@ -16,6 +16,14 @@ Two additive routes serve the host surface (the OBS v1 contract in
   `host.css` with the existing allow-list/traversal rules.
 - `GET /ws/host` → WebSocket host delivery. Requires an upgrade (otherwise 400),
   and any query parameter returns 400.
+- `GET /host/settings` → 200 `application/json` carrying the current validated
+  configuration's non-secret serialization (the same shape the version-1 JSON
+  file stores). All other methods → 405.
+- `POST /host/settings` → validates a full candidate configuration with the
+  existing `ServiceConfig` model and, only on success, persists it through the
+  existing atomic `save_config` store. Returns 200 with `restartRequired: true`
+  on success and 400 with a clear `error` message on validation failure. All
+  other methods → 405.
 
 ## Delivery model
 
@@ -150,10 +158,63 @@ are therefore each traceable to a single existing behavior: WebSocket connect,
 WebSocket open, bounded reconnect scheduling, and the loopback `/health` probe
 respectively.
 
+## Settings
+
+The Host page adds a narrow, loopback-only settings surface for editing the
+existing non-secret version-1 configuration. It never introduces live reload or
+broad runtime reconfiguration: saving only persists a validated candidate, and
+the running service applies it on the next start.
+
+### Editable and fixed fields
+
+Exactly six fields are editable:
+
+- `service.port` (integer 1024–65535);
+- `mock.cadenceMilliseconds` (integer 100–60,000);
+- `obs.denyUserIds` (array of strings, matched exactly);
+- `obs.denyNicknames` (array of strings, normalized at policy build);
+- `obs.keywords` (array of strings, normalized at policy build);
+- `obs.giftThresholdMilliCny` (non-negative integer).
+
+`service.host` remains fixed at `127.0.0.1`, `snapshot.maxMessages` remains
+fixed at `100`, and `configVersion` remains fixed at `1`. The settings form
+renders the fixed values as disabled, read-only inputs and never sends an
+altered value for them; the server-side `ServiceConfig` validation rejects any
+candidate that changes them anyway.
+
+### Save vs. apply
+
+A save is a write to the persisted configuration only:
+
+1. The page reads the current configuration with `GET /host/settings`.
+2. The user edits the six editable fields and submits a full candidate (the
+   fixed fields are copied through unchanged).
+3. The server validates the candidate with the existing `ServiceConfig.from_dict`
+   before anything is written. An invalid candidate returns 400 with a clear
+   message (for example `service.port must be between 1024 and 65535`) and never
+   touches the primary or backup files.
+4. A valid candidate is persisted through the existing atomic `save_config`
+   store, which retains one previously valid backup.
+5. The server responds with `restartRequired: true`; the running service keeps
+   its current configuration, so the change takes effect only on the next start.
+
+There is no live reload, no in-place `FilteringPolicy` rebuild, and no broad
+runtime reconfiguration seam.
+
+### Safety
+
+The settings API and UI expose only the non-secret version-1 configuration
+above. They carry no credentials, Access Key Secret, identity code, cookies,
+tokens, auth bodies, or future Bilibili secrets. Every value and message is
+rendered with DOM text APIs only (`textContent`, `value`); the settings panel
+uses no `innerHTML` or any HTML sink.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network
-access, deployment, database, settings UI, or protocol v2. It reuses the existing
+access, deployment, database, or protocol v2. It reuses the existing
 protocol v1 frame grammar (`snapshot`, `message.created`, `error`, and the exact
 `hello` client frame) on a separate endpoint; the OBS `/ws` endpoint, its
-filtering, its queues, and the frozen protocol fixtures are unchanged.
+filtering, its queues, and the frozen protocol fixtures are unchanged. The
+settings surface adds no live reload or broad runtime reconfiguration: it only
+validates and persists the existing non-secret configuration.

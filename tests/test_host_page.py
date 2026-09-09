@@ -16,6 +16,7 @@ import json
 import re
 import socket
 import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -31,6 +32,7 @@ from danmaku.core.hub import DistributionHub  # noqa: E402
 from danmaku.core.model import Message  # noqa: E402
 from danmaku.server.app import create_app  # noqa: E402
 from danmaku.server.config import ServiceConfig  # noqa: E402
+from danmaku.server.config_store import load_config, save_config  # noqa: E402
 from danmaku.server.filtering import FilteringPolicy  # noqa: E402
 from danmaku.server.runner import Service  # noqa: E402
 
@@ -50,6 +52,27 @@ _FORBIDDEN_DOM_SINKS = (
 _RECONNECT_DELAYS_LITERAL = "[500, 1000, 2000, 4000, 5000]"
 
 HELLO = '{"protocolVersion":1,"type":"hello","payload":{}}'
+
+#: Secret-shaped markers that must never appear in the Host settings surface or
+#: its local API responses. ``service.host``, ``snapshot.maxMessages``, and the
+#: six editable fields are the only configuration ever exposed.
+_SECRET_MARKERS = (
+    "accesskeysecret",
+    "access_key_secret",
+    "identitycode",
+    "identity_code",
+    "sessdata",
+    "bili_jct",
+    "csrf",
+    "buvid",
+    "cookie",
+    "token",
+    "credential",
+    "password",
+    "authorization",
+    "secretkey",
+    "apisecret",
+)
 
 
 def _read(relative_name: str) -> str:
@@ -555,6 +578,245 @@ class HostServiceLoopbackTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIn('id="timeline"', body)
         finally:
             await service.stop()
+
+
+class HostSettingsStructure(unittest.TestCase):
+    def test_html_declares_settings_toggle_and_panel(self):
+        html = _read("host.html")
+        self.assertIn('id="settings-toggle"', html)
+        self.assertIn('id="settings-panel"', html)
+        self.assertIn('id="settings-form"', html)
+
+    def test_settings_form_declares_all_six_editable_fields(self):
+        html = _read("host.html")
+        for field in (
+            "settings-port",
+            "settings-cadence",
+            "settings-deny-user-ids",
+            "settings-deny-nicknames",
+            "settings-keywords",
+            "settings-gift-threshold",
+        ):
+            self.assertIn(f'id="{field}"', html)
+
+    def test_settings_form_declares_fixed_fields(self):
+        html = _read("host.html")
+        self.assertIn('id="settings-host"', html)
+        self.assertIn('id="settings-max-messages"', html)
+
+    def test_fixed_fields_are_disabled(self):
+        html = _read("host.html")
+        self.assertRegex(html, r'<input[^>]*id="settings-host"[^>]*disabled')
+        self.assertRegex(
+            html, r'<input[^>]*id="settings-max-messages"[^>]*disabled'
+        )
+
+    def test_settings_controls_are_keyboard_accessible_buttons(self):
+        html = _read("host.html")
+        for control in ("settings-toggle", "settings-save", "settings-close"):
+            self.assertRegex(html, rf'<button[^>]*id="{control}"')
+
+    def test_settings_feedback_is_an_accessible_live_region(self):
+        html = _read("host.html")
+        self.assertIn('id="settings-feedback"', html)
+        self.assertIn('role="status"', html)
+        self.assertIn('aria-live="polite"', html)
+
+
+class HostSettingsClientContract(unittest.TestCase):
+    def test_settings_reads_local_settings_route(self):
+        app = _read("host.js")
+        self.assertIn('"/host/settings"', app)
+        self.assertIn("http://127.0.0.1", app)
+
+    def test_settings_submits_full_candidate_via_post(self):
+        app = _read("host.js")
+        self.assertIn('method: "POST"', app)
+        self.assertIn("JSON.stringify(buildCandidate())", app)
+        self.assertIn("function buildCandidate()", app)
+
+    def test_settings_fixed_fields_are_hardcoded(self):
+        app = _read("host.js")
+        self.assertIn('host: "127.0.0.1"', app)
+        self.assertIn("maxMessages: 100", app)
+
+    def test_settings_editable_fields_come_from_form_inputs(self):
+        app = _read("host.js")
+        for expr in (
+            "numberValue(settingsPort.value)",
+            "numberValue(settingsCadence.value)",
+            "listLines(settingsDenyUserIds.value)",
+            "listLines(settingsDenyNicknames.value)",
+            "listLines(settingsKeywords.value)",
+            "numberValue(settingsGiftThreshold.value)",
+        ):
+            self.assertIn(expr, app)
+
+    def test_settings_reports_restart_required_on_save(self):
+        app = _read("host.js")
+        self.assertIn("Restart required", app)
+        self.assertIn("result.data.saved", app)
+
+    def test_settings_renders_with_text_api_only(self):
+        app = _read("host.js")
+        self.assertIn("settingsFeedback.textContent", app)
+        self.assertIn(".textContent = ", app)
+        for sink in _FORBIDDEN_DOM_SINKS:
+            self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+    def test_settings_never_interpolate_error_details(self):
+        app = _read("host.js")
+        for leak in (
+            "event.reason",
+            "event.code",
+            "error.message",
+            "e.message",
+            "err.message",
+            ".stack",
+        ):
+            self.assertNotIn(leak, app, f"error detail leaked: {leak}")
+
+    def test_settings_sends_no_websocket_protocol_frame(self):
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+
+class HostSettingsSecretExclusion(unittest.TestCase):
+    def test_settings_assets_expose_no_secret_markers(self):
+        for name in ("host.html", "host.js", "host.css"):
+            content = _read(name).lower()
+            for marker in _SECRET_MARKERS:
+                self.assertNotIn(marker, content, f"secret marker {marker!r} in {name}")
+
+
+class HostSettingsHttpTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.config_path = Path(self.tmp.name) / "config.json"
+        self.hub = DistributionHub(clock=_fixed_clock)
+        self.app = create_app(
+            hub=self.hub, asset_root=_ASSET_DIR, config_path=self.config_path
+        )
+        self.client = TestClient(TestServer(self.app))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+        self.tmp.cleanup()
+
+    def _candidate(self):
+        return {
+            "configVersion": 1,
+            "service": {"host": "127.0.0.1", "port": 18000},
+            "mock": {"cadenceMilliseconds": 1000},
+            "snapshot": {"maxMessages": 100},
+            "obs": {
+                "denyUserIds": ["user:alice"],
+                "denyNicknames": ["Carol"],
+                "keywords": ["spoiler"],
+                "giftThresholdMilliCny": 500,
+            },
+        }
+
+    async def test_get_settings_returns_current_defaults_without_file(self):
+        resp = await self.client.get("/host/settings")
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, "application/json")
+        data = await resp.json()
+        self.assertEqual(data["protocolVersion"], 1)
+        config = data["config"]
+        self.assertEqual(config["service"]["host"], "127.0.0.1")
+        self.assertEqual(config["service"]["port"], 17391)
+        self.assertEqual(config["snapshot"]["maxMessages"], 100)
+
+    async def test_get_settings_exposes_only_known_non_secret_keys(self):
+        resp = await self.client.get("/host/settings")
+        data = await resp.json()
+        config = data["config"]
+        self.assertEqual(
+            set(config), {"configVersion", "service", "mock", "snapshot", "obs"}
+        )
+        self.assertEqual(set(config["service"]), {"host", "port"})
+        self.assertEqual(set(config["mock"]), {"cadenceMilliseconds"})
+        self.assertEqual(set(config["snapshot"]), {"maxMessages"})
+        self.assertEqual(
+            set(config["obs"]),
+            {"denyUserIds", "denyNicknames", "keywords", "giftThresholdMilliCny"},
+        )
+        text = json.dumps(data).lower()
+        for marker in _SECRET_MARKERS:
+            self.assertNotIn(marker, text)
+
+    async def test_post_valid_saves_and_reports_restart_required(self):
+        resp = await self.client.post("/host/settings", json=self._candidate())
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertTrue(data["saved"])
+        self.assertTrue(data["restartRequired"])
+        result = load_config(self.config_path)
+        self.assertEqual(result.source, "primary")
+        self.assertEqual(result.config.port, 18000)
+        self.assertEqual(result.config.deny_user_ids, frozenset({"user:alice"}))
+        self.assertEqual(result.config.deny_nicknames, frozenset({"Carol"}))
+        self.assertEqual(result.config.keywords, frozenset({"spoiler"}))
+        self.assertEqual(result.config.gift_threshold_milli_cny, 500)
+
+    async def test_post_invalid_returns_400_with_clear_feedback(self):
+        candidate = self._candidate()
+        candidate["service"]["port"] = 80
+        resp = await self.client.post("/host/settings", json=candidate)
+        self.assertEqual(resp.status, 400)
+        data = await resp.json()
+        self.assertFalse(data["saved"])
+        self.assertIn("service.port", data["error"])
+
+    async def test_post_rejects_changed_host(self):
+        candidate = self._candidate()
+        candidate["service"]["host"] = "0.0.0.0"
+        resp = await self.client.post("/host/settings", json=candidate)
+        self.assertEqual(resp.status, 400)
+        self.assertIn("service.host", (await resp.json())["error"])
+
+    async def test_post_rejects_changed_max_messages(self):
+        candidate = self._candidate()
+        candidate["snapshot"]["maxMessages"] = 50
+        resp = await self.client.post("/host/settings", json=candidate)
+        self.assertEqual(resp.status, 400)
+        self.assertIn("snapshot.maxMessages", (await resp.json())["error"])
+
+    async def test_post_rejects_unknown_key(self):
+        candidate = self._candidate()
+        candidate["secret"] = "x"
+        resp = await self.client.post("/host/settings", json=candidate)
+        self.assertEqual(resp.status, 400)
+
+    async def test_post_malformed_json_returns_400(self):
+        resp = await self.client.post(
+            "/host/settings",
+            data="{not json",
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(resp.status, 400)
+
+    async def test_invalid_post_cannot_replace_last_valid_config(self):
+        save_config(ServiceConfig(port=19000), self.config_path)
+        candidate = self._candidate()
+        candidate["service"]["port"] = 80
+        resp = await self.client.post("/host/settings", json=candidate)
+        self.assertEqual(resp.status, 400)
+        result = load_config(self.config_path)
+        self.assertEqual(result.source, "primary")
+        self.assertEqual(result.config.port, 19000)
+
+    async def test_settings_wrong_methods_405(self):
+        for method in ("put", "delete", "patch"):
+            with self.subTest(method=method):
+                resp = await getattr(self.client, method)("/host/settings")
+                self.assertEqual(resp.status, 405)
+
+    async def test_settings_head_405(self):
+        resp = await self.client.head("/host/settings")
+        self.assertEqual(resp.status, 405)
 
 
 if __name__ == "__main__":

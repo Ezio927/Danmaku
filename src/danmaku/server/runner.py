@@ -50,9 +50,11 @@ class Service:
         asset_root: Path | str | None = None,
         policy: FilteringPolicy | None = None,
         clock: Callable[[], int] | None = None,
+        config_path: Path | str | None = None,
     ) -> None:
         self._config = config
         self._asset_root = asset_root
+        self._config_path = config_path
         self._policy = policy if policy is not None else config.build_policy()
         self._hub = DistributionHub(
             store=SnapshotStore(max_messages=HOST_TIMELINE_MAX_MESSAGES),
@@ -84,7 +86,11 @@ class Service:
         return self._config.port
 
     async def start(self) -> None:
-        self._app = create_app(hub=self._hub, asset_root=self._asset_root)
+        self._app = create_app(
+            hub=self._hub,
+            asset_root=self._asset_root,
+            config_path=self._config_path,
+        )
         self._runner = web.AppRunner(self._app, shutdown_timeout=_SHUTDOWN_TIMEOUT)
         await self._runner.setup()
         site = web.TCPSite(

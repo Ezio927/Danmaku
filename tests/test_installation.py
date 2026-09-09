@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from danmaku.server.app import DEFAULT_ASSET_ROOT  # noqa: E402
+from danmaku.server.app import DEFAULT_ASSET_ROOT, create_app  # noqa: E402
 from danmaku.server.config import ConfigError, ServiceConfig  # noqa: E402
 from danmaku.server.config_store import default_config_path  # noqa: E402
 
@@ -149,6 +149,30 @@ class StartupPrecedenceTests(unittest.TestCase):
 
         with self.assertRaises(ConfigError):
             _apply_overrides(ServiceConfig.default(), _parse_args(["--port", "70000"]))
+
+
+class SettingsRouteRegistrationTests(unittest.TestCase):
+    def test_create_app_registers_settings_routes(self):
+        from danmaku.core.hub import DistributionHub
+
+        app = create_app(hub=DistributionHub())
+        methods_by_path: dict[str, set[str]] = {}
+        for route in app.router.routes():
+            if route.resource is not None:
+                methods_by_path.setdefault(route.resource.canonical, set()).add(
+                    route.method
+                )
+        self.assertIn("/host/settings", methods_by_path)
+        self.assertEqual(methods_by_path["/host/settings"], {"GET", "POST"})
+
+    def test_create_app_accepts_explicit_config_path(self):
+        from danmaku.core.hub import DistributionHub
+        from danmaku.server.state import CONFIG_PATH_KEY
+
+        app = create_app(
+            hub=DistributionHub(), config_path="/tmp/example/config.json"
+        )
+        self.assertEqual(app[CONFIG_PATH_KEY], Path("/tmp/example/config.json"))
 
 
 if __name__ == "__main__":

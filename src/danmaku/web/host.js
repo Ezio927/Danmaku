@@ -500,6 +500,153 @@
     return "\u00a5" + yuan + "." + fraction;
   }
 
+  // --- Host settings surface -------------------------------------------------
+  // A narrow, loopback-only settings panel for the existing non-secret
+  // version-1 configuration. It reads the current config from the local
+  // ``/host/settings`` route, exposes only the editable fields (port, mock
+  // cadence, the three deny lists, and the gift threshold) while keeping
+  // ``service.host`` and ``snapshot.maxMessages`` fixed, and submits a full
+  // candidate back through the same route. Every value and message is rendered
+  // with DOM text APIs only; no secrets are ever read, shown, or sent.
+  var settingsToggle = document.getElementById("settings-toggle");
+  var settingsPanel = document.getElementById("settings-panel");
+  var settingsForm = document.getElementById("settings-form");
+  var settingsClose = document.getElementById("settings-close");
+  var settingsFeedback = document.getElementById("settings-feedback");
+  var settingsHost = document.getElementById("settings-host");
+  var settingsPort = document.getElementById("settings-port");
+  var settingsCadence = document.getElementById("settings-cadence");
+  var settingsMaxMessages = document.getElementById("settings-max-messages");
+  var settingsDenyUserIds = document.getElementById("settings-deny-user-ids");
+  var settingsDenyNicknames = document.getElementById("settings-deny-nicknames");
+  var settingsKeywords = document.getElementById("settings-keywords");
+  var settingsGiftThreshold = document.getElementById("settings-gift-threshold");
+
+  function settingsUrl() {
+    var port = window.location.port || "17391";
+    return "http://127.0.0.1:" + port + "/host/settings";
+  }
+
+  function setSettingsFeedback(message, state) {
+    settingsFeedback.textContent = message;
+    settingsFeedback.className = "settings__feedback" +
+      (state ? " settings__feedback--" + state : "");
+  }
+
+  function numberValue(text) {
+    var parsed = parseInt(text, 10);
+    return isNaN(parsed) ? null : parsed;
+  }
+
+  function listLines(text) {
+    return text
+      .split("\n")
+      .map(function (line) { return line.trim(); })
+      .filter(function (line) { return line.length > 0; });
+  }
+
+  function populateSettings(config) {
+    var service = config.service || {};
+    var mock = config.mock || {};
+    var snapshot = config.snapshot || {};
+    var obs = config.obs || {};
+    settingsHost.value = service.host || "";
+    settingsPort.value = service.port == null ? "" : String(service.port);
+    settingsCadence.value =
+      mock.cadenceMilliseconds == null ? "" : String(mock.cadenceMilliseconds);
+    settingsMaxMessages.value =
+      snapshot.maxMessages == null ? "" : String(snapshot.maxMessages);
+    settingsDenyUserIds.value = (obs.denyUserIds || []).join("\n");
+    settingsDenyNicknames.value = (obs.denyNicknames || []).join("\n");
+    settingsKeywords.value = (obs.keywords || []).join("\n");
+    settingsGiftThreshold.value =
+      obs.giftThresholdMilliCny == null ? "" : String(obs.giftThresholdMilliCny);
+  }
+
+  function buildCandidate() {
+    return {
+      configVersion: 1,
+      service: { host: "127.0.0.1", port: numberValue(settingsPort.value) },
+      mock: { cadenceMilliseconds: numberValue(settingsCadence.value) },
+      snapshot: { maxMessages: 100 },
+      obs: {
+        denyUserIds: listLines(settingsDenyUserIds.value),
+        denyNicknames: listLines(settingsDenyNicknames.value),
+        keywords: listLines(settingsKeywords.value),
+        giftThresholdMilliCny: numberValue(settingsGiftThreshold.value)
+      }
+    };
+  }
+
+  function loadSettings() {
+    setSettingsFeedback("Loading settings...");
+    fetch(settingsUrl())
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        if (data && data.config) {
+          populateSettings(data.config);
+          setSettingsFeedback("");
+        } else {
+          setSettingsFeedback("Could not read settings.", "error");
+        }
+      })
+      .catch(function () {
+        setSettingsFeedback("Could not read settings.", "error");
+      });
+  }
+
+  function saveSettings(event) {
+    event.preventDefault();
+    setSettingsFeedback("Saving...");
+    fetch(settingsUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildCandidate())
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.data && result.data.saved) {
+          setSettingsFeedback("Saved. Restart required to apply changes.", "ok");
+        } else {
+          var message =
+            result.data && result.data.error
+              ? result.data.error
+              : "Could not save settings.";
+          setSettingsFeedback(message, "error");
+        }
+      })
+      .catch(function () {
+        setSettingsFeedback("Could not save settings.", "error");
+      });
+  }
+
+  function openSettings() {
+    settingsPanel.hidden = false;
+    settingsToggle.setAttribute("aria-expanded", "true");
+    loadSettings();
+  }
+
+  function closeSettings() {
+    settingsPanel.hidden = true;
+    settingsToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleSettings() {
+    if (settingsPanel.hidden) {
+      openSettings();
+    } else {
+      closeSettings();
+    }
+  }
+
+  settingsToggle.addEventListener("click", toggleSettings);
+  settingsClose.addEventListener("click", closeSettings);
+  settingsForm.addEventListener("submit", saveSettings);
+
   startPresentationTicker();
   connect();
   probeHealth();
