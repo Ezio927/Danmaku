@@ -45,6 +45,27 @@ APIs (`textContent`); it never uses `innerHTML` or any HTML sink. It deduplicate
 by message ID, caps the DOM at 1000 items (the host timeline bound), and
 reconnects on the same bounded schedule as OBS.
 
+## Timeline controls
+
+The Host page adds three bounded, view-local controls that never mutate the
+canonical host state, the OBS delivery path, filtering, or the connection:
+
+- **Paused follow.** When the timeline is scrolled away from the bottom, follow
+  mode pauses. Messages received while paused are still appended (never lost)
+  and counted into an unread total.
+- **Return to latest.** A visible, keyboard-accessible button (native `<button>`)
+  shows the unread count and, when activated, scrolls to the bottom, resets the
+  unread total, and resumes follow mode.
+- **Clear.** A native `<button>` removes only the current DOM items and resets the
+  view-local follow/unread state. It never touches the WebSocket, the canonical
+  store, OBS delivery, or filtering, and it sends no protocol frame.
+
+Every control is rendered and updated with DOM text APIs only (`textContent`).
+A snapshot replacement (initial connect or reconnect) deterministically resets
+the view-local state — unread count to zero, follow mode resumed, and the prompt
+hidden — before re-rendering, so reconnect behavior stays a complete replacement
+exactly like OBS.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network
