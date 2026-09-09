@@ -90,8 +90,11 @@ The Host page also includes a read-only **OBS setup** panel that shows the
 existing loopback OBS URL (`http://127.0.0.1:<port>/obs`) and copies it through
 the browser clipboard for an OBS Browser Source. It is purely client-side: it
 adds no route, changes no OBS protocol or filtering, and reports fixed
-success/failure feedback without surfacing exceptions or user content. See
-`docs/host-monitoring.md` for details.
+success/failure feedback without surfacing exceptions or user content. The same
+panel shows a deterministic, local-only preview of the four OBS message kinds
+(danmaku, gift, guard, and Super Chat), rendered from hardcoded synthetic
+samples with the existing overlay presentation styles and never sent to the
+core, OBS, or the network. See `docs/host-monitoring.md` for details.
 
 Each Host timeline item also exposes three view-local affordances — **Copy
 username** (copy the canonical `user.name`), **Copy text** (copy the canonical

@@ -473,6 +473,32 @@ body {
   margin: 4px 0;
 }
 
+.preview {
+  margin: 14px 0;
+  padding: 10px 12px;
+  border: 1px solid #33414d;
+  border-radius: 6px;
+  background: rgba(26, 33, 40, 0.6);
+}
+
+.preview__title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #e8eef4;
+}
+
+.preview__hint {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: #7d8b97;
+}
+
+.preview__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .details__fields {
   margin: 0 0 14px;
 }

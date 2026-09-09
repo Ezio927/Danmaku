@@ -293,11 +293,22 @@ target.
   Browser Source workflow: add a Browser source, paste the copied URL into the
   source URL field, set the overlay size, and leave the page running to
   reconnect automatically on the existing bounded schedule.
+- **Message preview.** The panel also shows a deterministic, local-only preview
+  (`id="preview-list"`) of the four canonical OBS message kinds — danmaku, gift,
+  guard, and Super Chat — so the streamer can see the existing overlay
+  presentation without publishing anything. Each sample is a hardcoded,
+  synthetic `Message`-shaped object; it is never read from the Host timeline,
+  the running configuration, or Bilibili, and it is never sent to the core, the
+  OBS WebSocket, or any network. The samples are rendered with the same kind
+  renderers and presentation classes as the OBS overlay but carry no action
+  buttons, so the preview is inert and changes no runtime, filtering, or
+  persistence state.
 - **Safety.** Every value and message uses DOM text/value APIs only
   (`textContent`, `value`); the surface uses no `innerHTML` or any HTML sink,
   sends no protocol frame (the Host client still sends exactly the frozen
   `hello` frame), and adds no credentials, external network, public binding, or
-  desktop framework.
+  desktop framework. The preview samples contain no credentials, secrets, or raw
+  configuration and expose no unsafe HTML interpolation.
 
 ## Message copy and details
 
