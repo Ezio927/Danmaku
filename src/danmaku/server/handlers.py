@@ -1,4 +1,4 @@
-"""HTTP handlers for health, the OBS page, and allow-listed assets."""
+"""HTTP handlers for health, the OBS page, the Host page, and allow-listed assets."""
 
 from __future__ import annotations
 
@@ -8,7 +8,14 @@ from aiohttp import web
 
 from .state import ASSET_ROOT_KEY
 
-__all__ = ["ASSETS", "HEALTH_BODY", "asset_handler", "health_handler", "obs_handler"]
+__all__ = [
+    "ASSETS",
+    "HEALTH_BODY",
+    "asset_handler",
+    "health_handler",
+    "host_handler",
+    "obs_handler",
+]
 
 HEALTH_BODY = '{"protocolVersion":1,"status":"ok"}'
 
@@ -16,6 +23,9 @@ ASSETS: dict[str, str] = {
     "index.html": "text/html; charset=utf-8",
     "app.js": "text/javascript; charset=utf-8",
     "style.css": "text/css; charset=utf-8",
+    "host.html": "text/html; charset=utf-8",
+    "host.js": "text/javascript; charset=utf-8",
+    "host.css": "text/css; charset=utf-8",
 }
 
 
@@ -42,6 +52,13 @@ async def obs_handler(request: web.Request) -> web.Response:
     if path is None:
         raise web.HTTPNotFound()
     return web.FileResponse(path, headers={"Content-Type": ASSETS["index.html"]})
+
+
+async def host_handler(request: web.Request) -> web.Response:
+    path = _resolve_asset(request.app[ASSET_ROOT_KEY], "host.html")
+    if path is None:
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={"Content-Type": ASSETS["host.html"]})
 
 
 async def asset_handler(request: web.Request) -> web.Response:

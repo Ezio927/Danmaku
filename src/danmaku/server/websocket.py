@@ -1,13 +1,22 @@
-"""WebSocket handler: snapshot-first, hello validation, ordered increments."""
+"""WebSocket handlers: snapshot-first, hello validation, ordered increments.
+
+The OBS endpoint (``/ws``) serves the aggregated, filtered delivery stream with
+the five-minute, 100-message delivery snapshot. The Host endpoint (``/ws/host``)
+serves the complete, unfiltered canonical host stream with the full 1000-message
+host-timeline snapshot. Both share the exact same frame grammar and hello
+validation semantics.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+from typing import Callable
 
 from aiohttp import WSMsgType, web
 
 from danmaku.core.hub import Subscription, SubscriptionClosed
+from danmaku.core.model import Message
 
 from .frames import (
     classify_client_frame,
@@ -23,7 +32,7 @@ from .state import (
     WS_DONE_KEY,
 )
 
-__all__ = ["DEFAULT_HELLO_TIMEOUT", "websocket_handler"]
+__all__ = ["DEFAULT_HELLO_TIMEOUT", "host_websocket_handler", "websocket_handler"]
 
 DEFAULT_HELLO_TIMEOUT = 5.0
 
@@ -47,7 +56,11 @@ async def _forward_messages(ws: web.WebSocketResponse, subscription: Subscriptio
             return
 
 
-async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+async def _websocket_session(
+    request: web.Request,
+    subscribe: Callable[[], Subscription],
+    snapshot: Callable[[], tuple[Message, ...]],
+) -> web.WebSocketResponse:
     if request.query_string:
         raise web.HTTPBadRequest()
 
@@ -55,11 +68,10 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
     await ws.prepare(request)
 
     app = request.app
-    hub = app[HUB_KEY]
     hello_timeout = app[HELLO_TIMEOUT_KEY]
 
-    subscription = hub.subscribe()
-    snapshot = hub.filtered_snapshot()
+    subscription = subscribe()
+    messages = snapshot()
 
     app[SUBSCRIPTIONS_KEY].add(subscription)
     app[WEBSOCKETS_KEY].add(ws)
@@ -70,7 +82,7 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
 
     try:
         try:
-            await ws.send_str(snapshot_frame(snapshot))
+            await ws.send_str(snapshot_frame(messages))
         except (ConnectionError, ConnectionResetError, RuntimeError):
             return ws
 
@@ -128,3 +140,13 @@ async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
         done.set()
 
     return ws
+
+
+async def websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    hub = request.app[HUB_KEY]
+    return await _websocket_session(request, hub.subscribe, hub.filtered_snapshot)
+
+
+async def host_websocket_handler(request: web.Request) -> web.WebSocketResponse:
+    hub = request.app[HUB_KEY]
+    return await _websocket_session(request, hub.host_subscribe, hub.snapshot)

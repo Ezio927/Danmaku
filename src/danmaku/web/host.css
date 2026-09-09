@@ -1,0 +1,102 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #101418;
+  color: #e8eef4;
+}
+
+body {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+#timeline {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.item {
+  max-width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  flex: 0 0 auto;
+}
+
+.item__label {
+  margin-right: 6px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.item__user {
+  margin-right: 6px;
+  font-weight: 700;
+  color: #9fd3ff;
+}
+
+.item--danmaku {
+  color: #e8eef4;
+  background: #1a2128;
+}
+
+.item--gift {
+  color: #fff3d6;
+  background: rgba(140, 84, 16, 0.55);
+  border-left: 3px solid #ffb02e;
+}
+
+.item--gift .item__label {
+  color: #ffd88a;
+}
+
+.item--guard {
+  color: #e7f6ff;
+  background: rgba(16, 84, 140, 0.55);
+  border-left: 3px solid #5cc8ff;
+}
+
+.item--guard .item__label {
+  color: #9fdcff;
+}
+
+.item--super-chat {
+  color: #fff0f4;
+  background: rgba(140, 24, 48, 0.6);
+  border-left: 3px solid #ff5c82;
+}
+
+.item--super-chat .item__label {
+  color: #ffb3c6;
+}
+
+@keyframes host-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.item--enter {
+  animation: host-enter 120ms ease-out;
+}
