@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any, Mapping
 
-__all__ = ["Message", "User", "ValidationError"]
+from .platform import GiftPlatformMeta
+
+__all__ = ["GiftPlatformMeta", "Message", "User", "ValidationError"]
 
 
 class ValidationError(ValueError):
@@ -126,6 +128,16 @@ def _coerce_user(value: Any) -> "User":
     return User(id=value["id"], name=value["name"])
 
 
+def _coerce_platform_meta(kind: str, value: Any) -> "GiftPlatformMeta | None":
+    if value is None:
+        return None
+    if not isinstance(value, GiftPlatformMeta):
+        raise ValidationError("platform_meta must be a GiftPlatformMeta or None")
+    if kind != "gift":
+        raise ValidationError("platform_meta is only valid for gift messages")
+    return value
+
+
 def _validate_data(kind: str, value: Any) -> dict[str, Any]:
     _require_object(value, "data")
     if kind == "danmaku":
@@ -196,6 +208,9 @@ class Message:
     kind: str
     user: User
     data: Mapping[str, Any]
+    platform_meta: "GiftPlatformMeta | None" = field(
+        default=None, compare=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "id", _validate_id(self.id, "id"))
@@ -208,9 +223,12 @@ class Message:
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "user", _coerce_user(self.user))
         object.__setattr__(self, "data", MappingProxyType(_validate_data(kind, self.data)))
+        object.__setattr__(self, "platform_meta", _coerce_platform_meta(kind, self.platform_meta))
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, Any]) -> "Message":
+    def from_dict(
+        cls, value: Mapping[str, Any], *, platform_meta: "GiftPlatformMeta | None" = None
+    ) -> "Message":
         _require_object(value, "message")
         _exact_keys(value, MESSAGE_KEYS, "message")
         return cls(
@@ -221,17 +239,20 @@ class Message:
             kind=value["kind"],
             user=value["user"],
             data=value["data"],
+            platform_meta=platform_meta,
         )
 
     @classmethod
-    def parse(cls, text: str) -> "Message":
+    def parse(
+        cls, text: str, *, platform_meta: "GiftPlatformMeta | None" = None
+    ) -> "Message":
         if not isinstance(text, str):
             raise ValidationError("message JSON must be a string")
         try:
             value = json.loads(text, parse_constant=_reject_constant)
         except json.JSONDecodeError as exc:
             raise ValidationError("message is not valid JSON") from exc
-        return cls.from_dict(value)
+        return cls.from_dict(value, platform_meta=platform_meta)
 
     def to_dict(self) -> dict[str, Any]:
         return {

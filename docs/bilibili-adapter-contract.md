@@ -30,9 +30,42 @@ they are carried verbatim into `user.id` and `user.name`.
 | `cmd` | canonical `kind` | `data` input | canonical `data` |
 | --- | --- | --- | --- |
 | `DANMU_MSG` | `danmaku` | `{"text": string}` | `{"text": string}` |
-| `SEND_GIFT` | `gift` | `{"giftName": string, "num": integer, "unitPriceMilliCny": integer}` | `{"giftName": string, "quantity": num, "totalAmountMilliCny": num * unitPriceMilliCny}` |
+| `SEND_GIFT` | `gift` | `{"giftName": string, "num": integer, "unitPriceMilliCny": integer}` optionally plus the combo metadata fields below | `{"giftName": string, "quantity": num, "totalAmountMilliCny": num * unitPriceMilliCny}` |
 | `GUARD_BUY` | `guard` | `{"guardLevel": integer, "num": integer}` | `{"tier": tier, "months": num}` |
 | `SUPER_CHAT_MESSAGE` | `superChat` | `{"message": string, "priceMilliCny": integer, "time": integer}` | `{"text": message, "amountMilliCny": priceMilliCny, "durationSeconds": time}` |
+
+## Gift combo metadata
+
+A recorded `SEND_GIFT` envelope may optionally carry the platform combo
+identity and cumulative gift fields. These are accepted only as a complete,
+all-or-nothing set of three keys added to the base gift `data` object:
+
+| Field | Type and rule |
+| --- | --- |
+| `comboId` | string matching `^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`; the stable platform combo identity of one gift burst |
+| `totalNum` | integer 1–1,000,000; the platform-reported cumulative quantity for the combo so far |
+| `totalCoin` | integer 0–9,007,199,254,740,991; the platform-reported cumulative total in milli-CNY for the combo so far |
+
+When the complete set is present and well-typed, it is normalized into an
+internal `GiftPlatformMeta` carried on the canonical message
+(`message.platform_meta`). This metadata is internal only: it is never added to
+the canonical v1 `data`, never serialized into a protocol frame, and never
+changes the canonical `data` mapping above.
+
+The cumulative values are inclusive of the current event. The canonical
+`quantity` and `totalAmountMilliCny` therefore remain the per-event increment
+(`num` and `num * unitPriceMilliCny`); the aggregator derives the combo's
+combined totals from the cumulative fields at the aggregation boundary.
+
+### Metadata usability
+
+- **Missing** (no combo keys) → no metadata; the aggregator falls back to the
+  bounded five-second sliding-window grouping.
+- **Malformed** (a partial key set, a wrong type, an out-of-range value, or a
+  control character in `comboId`) → rejected with `BilibiliAdapterError`.
+- **Unusable** (well-typed but internally inconsistent: `totalNum < num` or
+  `totalCoin < num * unitPriceMilliCny`) → the metadata is dropped (`None`), so
+  the aggregator falls back to the sliding window.
 
 Guard level mapping:
 
@@ -53,6 +86,9 @@ gift delivery threshold (see `docs/configuration-schema.md`).
 | `data.giftName` | 1–100 code points |
 | `data.num` (gift) | 1–1,000,000 |
 | `data.unitPriceMilliCny` | 0–9,007,199,254,740,991 |
+| `data.comboId` | 1–64 code points, ID regex |
+| `data.totalNum` | 1–1,000,000 |
+| `data.totalCoin` | 0–9,007,199,254,740,991 |
 | `data.num` (guard) | 1–120 |
 | `data.priceMilliCny` | 1–9,007,199,254,740,991 |
 | `data.time` | 1–86,400 |
@@ -86,6 +122,9 @@ The adapter rejects, without silent coercion:
   non-object `user`/`data`);
 - invalid values (out-of-bounds quantities, months, durations, amounts, or
   empty/too-long text);
+- malformed combo metadata (a partial `comboId`/`totalNum`/`totalCoin` set,
+  a wrong-typed or out-of-range cumulative value, or a control character in
+  `comboId`);
 - malformed timestamps (negative, boolean, floating-point, non-finite, or not
   representable as a UTC calendar timestamp);
 - non-integer or non-finite money (`NaN`, `Infinity`, `-Infinity`, or any
@@ -93,12 +132,18 @@ The adapter rejects, without silent coercion:
 
 Control characters (U+0000–U+001F) in any string are rejected.
 
+Well-typed but internally inconsistent combo metadata (`totalNum < num` or
+`totalCoin < num * unitPriceMilliCny`) is not rejected: it is treated as
+unusable and dropped, so the aggregator falls back to the sliding window.
+
 ## Fixtures
 
 Representative non-sensitive examples live in `docs/bilibili-fixtures/`:
 
 - `danmaku.json`
 - `gift.json`
+- `gift-combo.json` (a `SEND_GIFT` carrying platform combo identity and
+  cumulative fields)
 - `guard.json`
 - `super-chat.json`
 

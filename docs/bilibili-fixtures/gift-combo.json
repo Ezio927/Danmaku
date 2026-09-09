@@ -1,0 +1,14 @@
+{
+  "cmd": "SEND_GIFT",
+  "eventId": "g-200002",
+  "timestamp": 1735689601500,
+  "user": {"uid": "10002", "uname": "Bob"},
+  "data": {
+    "giftName": "Star",
+    "num": 1,
+    "unitPriceMilliCny": 500,
+    "comboId": "combo-200001",
+    "totalNum": 3,
+    "totalCoin": 1500
+  }
+}

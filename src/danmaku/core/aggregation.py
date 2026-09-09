@@ -1,4 +1,4 @@
-"""Deterministic five-second sliding-window aggregation for ordinary gifts.
+"""Deterministic ordinary-gift aggregation with platform combo fidelity.
 
 This module is a pure core abstraction: it consumes canonical
 :class:`~danmaku.core.model.Message` values and emits canonical
@@ -9,15 +9,21 @@ concern. Behaviour is documented in ``docs/gift-aggregation.md``:
 * Only ``kind == "gift"`` messages are aggregated. Danmaku, guard, and
   super-chat messages pass through unchanged and are never merged with gifts
   or with one another.
-* Gifts are grouped by the exact stable ``user.id`` and the exact
-  ``data.giftName`` already exposed by the canonical v1 model. No platform
-  combo field is invented.
+* When a gift carries reliable platform combo metadata
+  (:attr:`Message.platform_meta`), it is grouped by the stable platform combo
+  identity (``combo_id``) and its cumulative ``quantity`` and
+  ``totalAmountMilliCny`` are applied as the exact delta between consecutive
+  events of the same combo, so the cumulative totals are never double-counted.
+* When platform metadata is missing, unusable (non-monotonic cumulative
+  values), or invalid, the aggregator falls back to grouping by the exact
+  stable ``user.id`` and ``data.giftName`` and summing the exact per-event
+  ``quantity`` and ``totalAmountMilliCny``, within the same bounded sliding
+  window.
 * A gift merges into the current pending aggregate when it has the same key and
   its ``receivedAt`` is within ``window_milliseconds`` (default 5000) of the
   aggregate's current anchor — the most recently merged gift's ``receivedAt``.
   The boundary is inclusive: an exact five-second gap still merges. Merging
-  sums the exact integer ``quantity`` and ``totalAmountMilliCny`` and extends
-  the anchor to the new gift's ``receivedAt``.
+  extends the anchor to the new gift's ``receivedAt``.
 * Any other input — a gift with a different key, a matching gift beyond the
   window, or a non-gift message — first finalizes (emits) the pending
   aggregate, then is processed. This keeps the delivered stream strictly
@@ -28,7 +34,8 @@ concern. Behaviour is documented in ``docs/gift-aggregation.md``:
 
 The emitted aggregate keeps the first gift's identity (``id``, ``sequence``,
 ``receivedAt``, ``source``, and ``user``) and replaces its ``data`` with the
-exact summed ``quantity`` and ``totalAmountMilliCny``.
+exact combined ``giftName``, ``quantity``, and ``totalAmountMilliCny``. The
+aggregate carries no platform metadata: it is a plain canonical v1 gift message.
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .model import MAX_SEQUENCE, Message
+from .platform import GIFT_QUANTITY_MAX, GiftPlatformMeta
 
 __all__ = [
     "DEFAULT_WINDOW_MILLISECONDS",
@@ -45,7 +53,6 @@ __all__ = [
 ]
 
 DEFAULT_WINDOW_MILLISECONDS = 5000
-GIFT_QUANTITY_MAX = 1_000_000
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
@@ -58,7 +65,7 @@ def _received_at_millis(value: str) -> int:
 
 
 def _would_overflow(pending: "_PendingGift", message: Message) -> bool:
-    """Return ``True`` if merging ``message`` would exceed a model bound."""
+    """Return ``True`` if summing ``message`` would exceed a model bound."""
     return (
         pending.quantity + message.data["quantity"] > GIFT_QUANTITY_MAX
         or pending.total_amount_milli_cny + message.data["totalAmountMilliCny"]
@@ -66,15 +73,43 @@ def _would_overflow(pending: "_PendingGift", message: Message) -> bool:
     )
 
 
+def _combo_deltas(
+    pending: "_PendingGift", meta: GiftPlatformMeta
+) -> tuple[int, int] | None:
+    """Return the ``(quantity, amount)`` deltas for merging ``meta`` into a combo.
+
+    The platform reports running cumulative totals, so the delta between the
+    pending combo's last cumulative values and ``meta``'s cumulative values is
+    the new contribution. Non-monotonic cumulative values (a cumulative that
+    went backwards) are unusable and return ``None``.
+    """
+    delta_quantity = meta.cumulative_quantity - pending.last_cum_quantity
+    delta_amount = (
+        meta.cumulative_amount_milli_cny - pending.last_cum_amount_milli_cny
+    )
+    if delta_quantity < 0 or delta_amount < 0:
+        return None
+    return delta_quantity, delta_amount
+
+
 @dataclass
 class _PendingGift:
-    """A not-yet-emitted aggregate: one group of matching gifts."""
+    """A not-yet-emitted aggregate: one group of matching gifts.
 
-    key: tuple[str, str]
+    A fallback group keys by ``("user", user_id, gift_name)`` and sums the
+    per-event ``quantity``/``totalAmountMilliCny``. A combo group keys by
+    ``("combo", combo_id)``, applies cumulative deltas, and tracks the last
+    cumulative values in ``last_cum_quantity``/``last_cum_amount_milli_cny`` so
+    the next event can derive its delta without re-summing the running totals.
+    """
+
+    key: tuple[str, ...]
     first: Message
     anchor_millis: int
     quantity: int
     total_amount_milli_cny: int
+    last_cum_quantity: int | None = None
+    last_cum_amount_milli_cny: int | None = None
 
     def to_message(self) -> Message:
         return Message.from_dict(
@@ -86,7 +121,7 @@ class _PendingGift:
                 "kind": "gift",
                 "user": self.first.user.to_dict(),
                 "data": {
-                    "giftName": self.key[1],
+                    "giftName": self.first.data["giftName"],
                     "quantity": self.quantity,
                     "totalAmountMilliCny": self.total_amount_milli_cny,
                 },
@@ -95,12 +130,16 @@ class _PendingGift:
 
 
 class GiftAggregator:
-    """Group ordinary paid gifts by user and gift name within a sliding window.
+    """Group ordinary paid gifts by platform combo identity or user + gift name.
 
-    The aggregator is synchronous and deterministic: it holds at most one
-    pending aggregate and emits that aggregate only when a boundary arrives
-    (a non-gift message, a gift with a different key, or a matching gift beyond
-    the window) or when :meth:`finalize` is called explicitly.
+    Gifts carrying reliable platform combo metadata are grouped by ``combo_id``
+    with cumulative delta updates; everything else falls back to the bounded
+    five-second sliding-window grouping by ``user.id`` + ``data.giftName`` with
+    summed values. The aggregator is synchronous and deterministic: it holds at
+    most one pending aggregate and emits that aggregate only when a boundary
+    arrives (a non-gift message, a gift with a different key, a matching gift
+    beyond the window, or an unusable cumulative) or when :meth:`finalize` is
+    called explicitly.
     """
 
     def __init__(self, window_milliseconds: int = DEFAULT_WINDOW_MILLISECONDS) -> None:
@@ -137,10 +176,38 @@ class GiftAggregator:
             emitted = self._flush()
             return emitted + (message,)
 
-        key = (message.user.id, message.data["giftName"])
         arrived = _received_at_millis(message.received_at)
         pending = self._pending
+        meta = message.platform_meta
 
+        if meta is not None:
+            key = ("combo", meta.combo_id)
+            if (
+                pending is not None
+                and pending.key == key
+                and arrived - pending.anchor_millis <= self._window_milliseconds
+            ):
+                deltas = _combo_deltas(pending, meta)
+                if deltas is not None:
+                    delta_quantity, delta_amount = deltas
+                    pending.quantity += delta_quantity
+                    pending.total_amount_milli_cny += delta_amount
+                    pending.last_cum_quantity = meta.cumulative_quantity
+                    pending.last_cum_amount_milli_cny = (
+                        meta.cumulative_amount_milli_cny
+                    )
+                    pending.anchor_millis = arrived
+                    return ()
+                # Non-monotonic cumulative values are unusable: fall back to the
+                # plain sum grouping for this event.
+                emitted = self._flush()
+                self._pending = self._open_fallback(message, arrived)
+                return emitted
+            emitted = self._flush()
+            self._pending = self._open_combo(message, arrived, meta)
+            return emitted
+
+        key = ("user", message.user.id, message.data["giftName"])
         if (
             pending is not None
             and pending.key == key
@@ -153,13 +220,7 @@ class GiftAggregator:
             return ()
 
         emitted = self._flush()
-        self._pending = _PendingGift(
-            key=key,
-            first=message,
-            anchor_millis=arrived,
-            quantity=message.data["quantity"],
-            total_amount_milli_cny=message.data["totalAmountMilliCny"],
-        )
+        self._pending = self._open_fallback(message, arrived)
         return emitted
 
     def finalize(self) -> tuple[Message, ...]:
@@ -172,3 +233,27 @@ class GiftAggregator:
             return ()
         self._pending = None
         return (pending.to_message(),)
+
+    @staticmethod
+    def _open_combo(
+        message: Message, arrived: int, meta: GiftPlatformMeta
+    ) -> "_PendingGift":
+        return _PendingGift(
+            key=("combo", meta.combo_id),
+            first=message,
+            anchor_millis=arrived,
+            quantity=meta.cumulative_quantity,
+            total_amount_milli_cny=meta.cumulative_amount_milli_cny,
+            last_cum_quantity=meta.cumulative_quantity,
+            last_cum_amount_milli_cny=meta.cumulative_amount_milli_cny,
+        )
+
+    @staticmethod
+    def _open_fallback(message: Message, arrived: int) -> "_PendingGift":
+        return _PendingGift(
+            key=("user", message.user.id, message.data["giftName"]),
+            first=message,
+            anchor_millis=arrived,
+            quantity=message.data["quantity"],
+            total_amount_milli_cny=message.data["totalAmountMilliCny"],
+        )

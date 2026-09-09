@@ -2,7 +2,7 @@
 
 from .aggregation import DEFAULT_WINDOW_MILLISECONDS, GiftAggregator
 from .hub import DistributionHub, Subscription, SubscriptionClosed
-from .model import Message, User, ValidationError
+from .model import GiftPlatformMeta, Message, User, ValidationError
 from .snapshot import SnapshotStore
 from .superchat import (
     DELETED,
@@ -22,6 +22,7 @@ __all__ = [
     "DistributionHub",
     "EXPIRED",
     "GiftAggregator",
+    "GiftPlatformMeta",
     "Message",
     "PENDING",
     "PRESENTATION_INTERVAL_MILLISECONDS",
