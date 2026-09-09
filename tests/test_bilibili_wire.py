@@ -405,6 +405,22 @@ class AdapterIntegrationTests(unittest.TestCase):
             codec.decode_messages(frame)
         self.assertEqual(codec.adapter.next_sequence, 1)
 
+    def test_decode_messages_preserves_platform_combo_metadata(self):
+        envelope = _load_envelope("gift-combo.json")
+        codec = BilibiliWireCodec(adapter=BilibiliAdapter(start_sequence=1))
+        messages = codec.decode_messages(encode_message_plain(_compact(envelope)))
+        self.assertEqual(len(messages), 1)
+        message = messages[0]
+        self.assertEqual(message.id, "bilibili:g-200002")
+        self.assertEqual(
+            dict(message.data),
+            {"giftName": "Star", "quantity": 1, "totalAmountMilliCny": 500},
+        )
+        self.assertIsNotNone(message.platform_meta)
+        self.assertEqual(message.platform_meta.combo_id, "combo-200001")
+        self.assertEqual(message.platform_meta.cumulative_quantity, 3)
+        self.assertEqual(message.platform_meta.cumulative_amount_milli_cny, 1500)
+
 
 if __name__ == "__main__":
     unittest.main()
