@@ -1,0 +1,8 @@
+{
+  "name": "heartbeat",
+  "description": "A recorded Bilibili heartbeat frame (operation 2, protocol version 1, empty body).",
+  "protocolVersion": 1,
+  "operation": 2,
+  "sequence": 1,
+  "frameHex": "00000010001000010000000200000001"
+}

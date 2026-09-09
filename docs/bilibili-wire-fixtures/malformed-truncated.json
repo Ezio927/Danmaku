@@ -1,0 +1,8 @@
+{
+  "name": "malformed-truncated",
+  "description": "A recorded frame whose header declares 100 total bytes but carries only the 16-byte header; it must be rejected as truncated.",
+  "protocolVersion": 1,
+  "operation": 5,
+  "sequence": 1,
+  "frameHex": "00000064001000010000000500000001"
+}

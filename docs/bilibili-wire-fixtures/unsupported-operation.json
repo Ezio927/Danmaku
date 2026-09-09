@@ -1,0 +1,8 @@
+{
+  "name": "unsupported-operation",
+  "description": "A recorded frame with an unknown operation value 99; it must be classified explicitly as unsupported rather than silently coerced.",
+  "protocolVersion": 1,
+  "operation": 99,
+  "sequence": 1,
+  "frameHex": "00000010001000010000006300000001"
+}
