@@ -26,13 +26,15 @@ starts at `unconfigured`.
 
 ## Failure classes
 
-The five distinct failure classes are exposed as `FailureClass` string values:
+The seven distinct failure classes are exposed as `FailureClass` string values:
 
 | Class | Value | Behaviour |
 | --- | --- | --- |
 | `CREDENTIAL` | `credential` | fail-closed stop, no retry |
 | `IDENTITY_CODE` | `identity-code` | fail-closed stop, no retry |
 | `NOT_LIVE` | `not-live` | fail-closed stop, no retry |
+| `AUTH` | `auth` | fail-closed stop, no retry |
+| `MALFORMED_PLATFORM` | `malformed-platform` | fail-closed stop, no retry |
 | `NETWORK` | `network` | retryable with backoff |
 | `PLATFORM` | `platform` | retryable with backoff |
 
@@ -52,7 +54,7 @@ Each event is legal only in the listed states; any other call raises
 | `stop()` | `starting session`, `connecting`, `connected`, `reconnecting` | `waiting for identity code` (resets attempt) |
 | `report_failure(network \| platform)` | `connecting`, `connected` | `reconnecting` (increments attempt) |
 | `report_failure(credential)` | `starting session`, `connecting`, `connected`, `reconnecting` | `unconfigured` (resets attempt) |
-| `report_failure(identity-code \| not-live)` | `starting session`, `connecting`, `connected`, `reconnecting` | `waiting for identity code` (resets attempt) |
+| `report_failure(identity-code \| not-live \| auth \| malformed-platform)` | `starting session`, `connecting`, `connected`, `reconnecting` | `waiting for identity code` (resets attempt) |
 
 The identity code is validated but never stored. `submit_identity_code` accepts
 a non-empty string of at most 256 code points with no control characters and

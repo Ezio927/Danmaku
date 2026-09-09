@@ -49,16 +49,19 @@ class ConnectionState(StrEnum):
 
 
 class FailureClass(StrEnum):
-    """The five distinct Bilibili connection failure classes.
+    """The seven distinct Bilibili connection failure classes.
 
-    ``credential``, ``identity-code``, and ``not-live`` are fail-closed stop
-    failures (no retry). ``network`` and ``platform`` are transient and
-    retryable with bounded exponential backoff.
+    ``credential``, ``identity-code``, ``not-live``, ``auth``, and
+    ``malformed-platform`` are fail-closed stop failures (no retry).
+    ``network`` and ``platform`` are transient and retryable with bounded
+    exponential backoff.
     """
 
     CREDENTIAL = "credential"
     IDENTITY_CODE = "identity-code"
     NOT_LIVE = "not-live"
+    AUTH = "auth"
+    MALFORMED_PLATFORM = "malformed-platform"
     NETWORK = "network"
     PLATFORM = "platform"
 
@@ -179,9 +182,9 @@ class ConnectionLifecycle:
       ``reconnecting``;
     * ``report_failure(credential)``: ``starting session``/``connecting``/
       ``connected``/``reconnecting`` -> ``unconfigured``;
-    * ``report_failure(identity-code|not-live)``: ``starting session``/
-      ``connecting``/``connected``/``reconnecting`` -> ``waiting for identity
-      code``.
+    * ``report_failure(identity-code|not-live|auth|malformed-platform)``:
+      ``starting session``/``connecting``/``connected``/``reconnecting`` ->
+      ``waiting for identity code``.
     """
 
     def __init__(
@@ -343,10 +346,10 @@ class ConnectionLifecycle:
 
         ``network`` and ``platform`` are retryable: from ``connecting`` or
         ``connected`` they move to ``reconnecting`` and increment the attempt
-        counter. ``credential``, ``identity-code``, and ``not-live`` are
-        fail-closed stop failures: they move to ``unconfigured`` (credential)
-        or ``waiting for identity code`` (identity-code, not-live) and reset
-        the attempt counter.
+        counter. ``credential``, ``identity-code``, ``not-live``, ``auth``, and
+        ``malformed-platform`` are fail-closed stop failures: they move to
+        ``unconfigured`` (credential) or ``waiting for identity code`` (the
+        other four) and reset the attempt counter.
         """
         if not isinstance(failure_class, FailureClass):
             raise TypeError("failure_class must be a FailureClass")
