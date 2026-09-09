@@ -66,6 +66,56 @@ the view-local state — unread count to zero, follow mode resumed, and the prom
 hidden — before re-rendering, so reconnect behavior stays a complete replacement
 exactly like OBS.
 
+## Top presentation
+
+The Host page adds one pinned top-presentation card for Super Chat messages. It
+is derived entirely client-side from the same complete host stream and never
+changes the canonical host state, the OBS delivery path, filtering, or the
+protocol:
+
+- **View-local lifecycle.** Every received `kind="superChat"` message stays in
+  the complete host timeline (the timeline keeps the full, unchanged message)
+  and is also admitted to a deterministic FIFO pending queue in receive order.
+  The earliest pending Super Chat becomes the single displayed top card exactly
+  three seconds (`PRESENTATION_INTERVAL_SECONDS`) after its `receivedAt`; the
+  boundary is inclusive.
+- **Duration and expiry.** The displayed card expires `data.durationSeconds`
+  after it became displayed and promotes the next pending item. Expiry removes
+  only the top card; the timeline item is retained.
+- **Skip control.** A visible, keyboard-accessible native `<button>` (`Skip`)
+  dismisses the active card immediately and promotes the next pending item
+  immediately, bypassing both the remaining duration and the three-second
+  interval. When no card is displayed, it promotes the earliest pending item.
+  It mutates only view-local presentation state and sends no protocol frame.
+- **Rendering.** The card renders the user name, the formatted amount, the
+  deterministic tier/color derived from `data.amountMilliCny`, the message text,
+  the pending count, and the remaining time — all through DOM text APIs only.
+  The accent color is applied with a CSS class, never inline markup.
+- **Snapshot replacement.** A snapshot deterministically resets and reconstructs
+  the view-local presentation state (pending queue and active card) with no
+  entry animation, exactly like the timeline reconnect behaviour.
+
+The tier/color is a deterministic, display-only bucket derived from the integer
+`data.amountMilliCny` (1 CNY = 1000 milli-CNY):
+
+| amount ≥ (CNY) | color |
+| --- | --- |
+| ¥10,000 | gold |
+| ¥2,000 | red |
+| ¥1,000 | pink |
+| ¥500 | purple |
+| ¥100 | indigo |
+| ¥50 | cyan |
+| ¥30 | blue |
+
+Amounts below ¥30 fall back to blue. This mapping is presentation-only; the
+canonical `Message` model carries no tier or color field.
+
+The top-presentation lifecycle is a client-side mirror of the documented core
+`SuperChatLifecycle` (`docs/super-chat-lifecycle.md`). It is fed by the same
+host stream and shares the same received/pending/displayed/expired semantics,
+independently of the OBS delivery path.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network
