@@ -573,6 +573,11 @@
     actions.appendChild(
       actionButton("Block nickname", "denyNicknames", message.user.name)
     );
+    if (messageText(message) != null) {
+      actions.appendChild(copyTextButton(message));
+    }
+    actions.appendChild(copyUsernameButton(message));
+    actions.appendChild(detailsButton(message));
     item.appendChild(actions);
   }
 
@@ -583,6 +588,148 @@
     var fraction = remainder < 10 ? "0" + remainder : String(remainder);
     return "\u00a5" + yuan + "." + fraction;
   }
+
+  // --- Host message copy and details actions --------------------------------
+  // Each Host timeline item also exposes three accessible, view-local
+  // affordances that never touch the network, the canonical Host state, OBS
+  // delivery, filtering, protocol v1, or the deny-list actions: copy the
+  // message text (only kinds carrying the canonical ``data.text``), copy the
+  // username (``user.name``), and show a concise details read-out built only
+  // from existing canonical fields. Copy goes through the browser clipboard
+  // seam; every label, value, and feedback message uses DOM text APIs only, and
+  // fixed success/failure strings never surface clipboard exceptions or user
+  // content.
+  var detailsPanel = document.getElementById("details-panel");
+  var detailsFields = document.getElementById("details-fields");
+  var detailsClose = document.getElementById("details-close");
+
+  function copyViaClipboard(text, successMessage, failureMessage) {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+      setActionFeedback("Copy is not available in this browser.", "error");
+      return;
+    }
+    navigator.clipboard.writeText(text).then(function () {
+      setActionFeedback(successMessage, "ok");
+    }).catch(function () {
+      setActionFeedback(failureMessage, "error");
+    });
+  }
+
+  function messageText(message) {
+    if (message.kind === "danmaku" || message.kind === "superChat") {
+      return message.data.text;
+    }
+    return null;
+  }
+
+  function copyMessageText(message) {
+    copyViaClipboard(
+      messageText(message),
+      "Message text copied.",
+      "Could not copy the message text."
+    );
+  }
+
+  function copyUsername(message) {
+    copyViaClipboard(
+      message.user.name,
+      "Username copied.",
+      "Could not copy the username."
+    );
+  }
+
+  function copyTextButton(message) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "item__action";
+    button.textContent = "Copy text";
+    button.addEventListener("click", function () {
+      copyMessageText(message);
+    });
+    return button;
+  }
+
+  function copyUsernameButton(message) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "item__action";
+    button.textContent = "Copy username";
+    button.addEventListener("click", function () {
+      copyUsername(message);
+    });
+    return button;
+  }
+
+  function detailsButton(message) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "item__action";
+    button.textContent = "Details";
+    button.addEventListener("click", function () {
+      openDetails(message);
+    });
+    return button;
+  }
+
+  function detailsRows(message) {
+    var rows = [
+      ["Kind", message.kind],
+      ["User ID", message.user.id],
+      ["Username", message.user.name],
+      ["Received", message.receivedAt]
+    ];
+    switch (message.kind) {
+      case "danmaku":
+        rows.push(["Text", message.data.text]);
+        break;
+      case "gift":
+        rows.push(["Gift", message.data.giftName]);
+        rows.push(["Quantity", String(message.data.quantity)]);
+        rows.push(["Total amount", formatMoney(message.data.totalAmountMilliCny)]);
+        break;
+      case "guard":
+        rows.push(["Tier", String(message.data.tier)]);
+        rows.push(["Months", String(message.data.months)]);
+        break;
+      case "superChat":
+        rows.push(["Text", message.data.text]);
+        rows.push(["Amount", formatMoney(message.data.amountMilliCny)]);
+        rows.push(["Duration", formatDuration(message.data.durationSeconds)]);
+        break;
+      default:
+        break;
+    }
+    return rows;
+  }
+
+  function clearDetails() {
+    while (detailsFields.firstChild) {
+      detailsFields.removeChild(detailsFields.firstChild);
+    }
+  }
+
+  function openDetails(message) {
+    clearDetails();
+    var rows = detailsRows(message);
+    for (var i = 0; i < rows.length; i += 1) {
+      var term = document.createElement("dt");
+      term.className = "details__term";
+      term.textContent = rows[i][0];
+      var desc = document.createElement("dd");
+      desc.className = "details__desc";
+      desc.textContent = rows[i][1];
+      detailsFields.appendChild(term);
+      detailsFields.appendChild(desc);
+    }
+    detailsPanel.hidden = false;
+  }
+
+  function closeDetails() {
+    detailsPanel.hidden = true;
+    clearDetails();
+  }
+
+  detailsClose.addEventListener("click", closeDetails);
 
   // --- Host settings surface -------------------------------------------------
   // A narrow, loopback-only settings panel for the existing non-secret

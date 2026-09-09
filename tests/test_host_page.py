@@ -844,6 +844,106 @@ class HostObsSetupContract(unittest.TestCase):
             self.assertIn(selector, css)
 
 
+class HostMessageActionsStructure(unittest.TestCase):
+    def test_html_declares_details_panel_and_fields(self):
+        html = _read("host.html")
+        self.assertIn('id="details-panel"', html)
+        self.assertIn('id="details-fields"', html)
+        self.assertIn('id="details-close"', html)
+
+    def test_details_close_control_is_keyboard_accessible_button(self):
+        html = _read("host.html")
+        self.assertRegex(html, r'<button[^>]*id="details-close"')
+
+
+class HostMessageActionsContract(unittest.TestCase):
+    def test_copy_actions_use_browser_clipboard_seam(self):
+        app = _read("host.js")
+        self.assertIn("navigator.clipboard", app)
+        self.assertIn("writeText", app)
+        self.assertIn("function copyViaClipboard(", app)
+
+    def test_copy_username_targets_canonical_user_name(self):
+        app = _read("host.js")
+        self.assertIn('"Copy username"', app)
+        self.assertIn("message.user.name", app)
+
+    def test_copy_text_targets_canonical_data_text(self):
+        app = _read("host.js")
+        self.assertIn('"Copy text"', app)
+        self.assertIn("message.data.text", app)
+
+    def test_copy_text_available_only_for_text_kinds(self):
+        app = _read("host.js")
+        self.assertIn('message.kind === "danmaku"', app)
+        self.assertIn('message.kind === "superChat"', app)
+
+    def test_details_action_rendered_per_timeline_item(self):
+        app = _read("host.js")
+        self.assertIn('button.textContent = "Details"', app)
+        self.assertIn("openDetails", app)
+        self.assertIn("copyTextButton(message)", app)
+        self.assertIn("copyUsernameButton(message)", app)
+        self.assertIn("detailsButton(message)", app)
+
+    def test_details_renders_only_from_canonical_fields(self):
+        app = _read("host.js")
+        for expr in (
+            "message.kind",
+            "message.user.id",
+            "message.user.name",
+            "message.receivedAt",
+            "message.data.text",
+            "message.data.giftName",
+            "message.data.quantity",
+            "message.data.totalAmountMilliCny",
+            "message.data.tier",
+            "message.data.months",
+            "message.data.amountMilliCny",
+            "message.data.durationSeconds",
+        ):
+            self.assertIn(expr, app)
+
+    def test_details_rendered_with_text_api_only(self):
+        app = _read("host.js")
+        self.assertIn("term.textContent = rows[i][0]", app)
+        self.assertIn("desc.textContent = rows[i][1]", app)
+        for sink in _FORBIDDEN_DOM_SINKS:
+            self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+    def test_copy_reports_fixed_success_and_failure_feedback(self):
+        app = _read("host.js")
+        for text in (
+            '"Message text copied."',
+            '"Could not copy the message text."',
+            '"Username copied."',
+            '"Could not copy the username."',
+            '"Copy is not available in this browser."',
+        ):
+            self.assertIn(text, app)
+
+    def test_message_actions_never_interpolate_error_details(self):
+        app = _read("host.js")
+        for leak in (
+            "event.reason",
+            "event.code",
+            "error.message",
+            "e.message",
+            "err.message",
+            ".stack",
+        ):
+            self.assertNotIn(leak, app, f"error detail leaked: {leak}")
+
+    def test_message_actions_send_no_websocket_protocol_frame(self):
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+    def test_message_action_and_details_styles_declared(self):
+        css = _read("host.css")
+        for selector in ("details__fields", "details__term", "details__desc"):
+            self.assertIn(selector, css)
+
+
 class HostSettingsHttpTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()

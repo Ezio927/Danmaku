@@ -473,6 +473,27 @@ body {
   margin: 4px 0;
 }
 
+.details__fields {
+  margin: 0 0 14px;
+}
+
+.details__term {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #7d8b97;
+}
+
+.details__desc {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #e8eef4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .action-feedback {
   position: fixed;
   z-index: 10;
