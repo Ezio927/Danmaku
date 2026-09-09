@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from danmaku.core.model import Message  # noqa: E402
 from danmaku.server.config import ConfigError, ServiceConfig  # noqa: E402
+from danmaku.server.config_store import load_config  # noqa: E402
 from danmaku.server.filtering import FilteringPolicy  # noqa: E402
 from danmaku.server.runner import HOST_TIMELINE_MAX_MESSAGES, Service  # noqa: E402
 
@@ -435,6 +436,106 @@ class ServiceIntegrationTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(close.type, aiohttp.WSMsgType.CLOSE)
                     self.assertEqual(close.data, 1001)
                     await ws.close()
+        finally:
+            await service.stop()
+
+
+class ServiceSettingsTests(unittest.IsolatedAsyncioTestCase):
+    """Host settings surface over the real loopback service.
+
+    Saving only persists a validated candidate through the atomic config store;
+    the running service keeps its configuration (no live reload), so the save
+    reports restart-required and the change takes effect on the next start.
+    """
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / "index.html").write_text("<html>obs</html>", encoding="utf-8")
+        (self.root / "app.js").write_text("// js", encoding="utf-8")
+        (self.root / "style.css").write_text("/* css */", encoding="utf-8")
+        self.config_path = self.root / "config.json"
+
+    async def asyncTearDown(self):
+        self.tmp.cleanup()
+
+    def _url(self, service, path="/"):
+        return f"http://127.0.0.1:{service.port}{path}"
+
+    def _candidate(self, port=18000):
+        return {
+            "configVersion": 1,
+            "service": {"host": "127.0.0.1", "port": port},
+            "mock": {"cadenceMilliseconds": 1000},
+            "snapshot": {"maxMessages": 100},
+            "obs": {
+                "denyUserIds": [],
+                "denyNicknames": [],
+                "keywords": [],
+                "giftThresholdMilliCny": 100,
+            },
+        }
+
+    async def _start(self, run_port=None):
+        service = Service(
+            ServiceConfig(port=run_port or _free_port(), cadence_milliseconds=60000),
+            asset_root=self.root,
+            config_path=self.config_path,
+        )
+        await service.start()
+        return service
+
+    async def test_settings_save_persists_and_requires_restart(self):
+        run_port = _free_port()
+        service = await self._start(run_port)
+        try:
+            async with aiohttp.ClientSession() as sess:
+                # No file yet: the surface reports the persisted (canonical
+                # default) configuration, independent of the running port.
+                async with sess.get(self._url(service, "/host/settings")) as resp:
+                    self.assertEqual(resp.status, 200)
+                    data = await resp.json()
+                    self.assertEqual(data["config"]["service"]["host"], "127.0.0.1")
+                    self.assertEqual(data["config"]["service"]["port"], 17391)
+
+                async with sess.post(
+                    self._url(service, "/host/settings"),
+                    json=self._candidate(18000),
+                ) as resp:
+                    self.assertEqual(resp.status, 200)
+                    data = await resp.json()
+                    self.assertTrue(data["saved"])
+                    self.assertTrue(data["restartRequired"])
+
+                # The re-read now reflects the newly persisted configuration.
+                async with sess.get(self._url(service, "/host/settings")) as resp:
+                    data = await resp.json()
+                    self.assertEqual(data["config"]["service"]["port"], 18000)
+
+            result = load_config(self.config_path)
+            self.assertEqual(result.source, "primary")
+            self.assertEqual(result.config.port, 18000)
+            # No live reload: the running service still listens on its own port.
+            self.assertEqual(service.port, run_port)
+        finally:
+            await service.stop()
+
+    async def test_invalid_settings_save_is_rejected_and_not_persisted(self):
+        run_port = _free_port()
+        service = await self._start(run_port)
+        try:
+            async with aiohttp.ClientSession() as sess:
+                async with sess.post(
+                    self._url(service, "/host/settings"),
+                    json=self._candidate(80),
+                ) as resp:
+                    self.assertEqual(resp.status, 400)
+                    data = await resp.json()
+                    self.assertFalse(data["saved"])
+                    self.assertIn("service.port", data["error"])
+            result = load_config(self.config_path)
+            self.assertEqual(result.source, "defaults")
+            self.assertEqual(result.config.port, 17391)
         finally:
             await service.stop()
 

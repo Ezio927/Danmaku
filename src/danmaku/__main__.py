@@ -91,7 +91,8 @@ def _apply_overrides(
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    result = load_config(_resolve_config_path(args))
+    config_path = _resolve_config_path(args)
+    result = load_config(config_path)
     if result.diagnostic:
         print(f"warning: {result.diagnostic}", file=sys.stderr)
 
@@ -102,7 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    service = Service(config, policy=policy)
+    service = Service(config, policy=policy, config_path=config_path)
     try:
         asyncio.run(service.run())
     except KeyboardInterrupt:

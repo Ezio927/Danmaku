@@ -10,6 +10,7 @@ from danmaku.core.hub import DistributionHub
 
 __all__ = [
     "ASSET_ROOT_KEY",
+    "CONFIG_PATH_KEY",
     "HELLO_TIMEOUT_KEY",
     "HUB_KEY",
     "SUBSCRIPTIONS_KEY",
@@ -19,6 +20,7 @@ __all__ = [
 
 HUB_KEY = web.AppKey("hub", DistributionHub)
 ASSET_ROOT_KEY = web.AppKey("asset_root", Path)
+CONFIG_PATH_KEY = web.AppKey("config_path", Path)
 HELLO_TIMEOUT_KEY = web.AppKey("hello_timeout", float)
 SUBSCRIPTIONS_KEY = web.AppKey("subscriptions", set)
 WEBSOCKETS_KEY = web.AppKey("websockets", set)

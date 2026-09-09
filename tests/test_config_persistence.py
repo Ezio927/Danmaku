@@ -395,5 +395,62 @@ class PolicyCompositionTests(unittest.TestCase):
         self.assertEqual(policy.gift_threshold_milli_cny, 100)
 
 
+class SafeFieldExposureTests(unittest.TestCase):
+    """The persisted JSON exposes exactly the documented non-secret keys.
+
+    The settings surface edits the same serialization, so verifying the shape
+    here guarantees no credential, token, or other secret field can appear in
+    the ordinary JSON configuration.
+    """
+
+    _SECRET_MARKERS = (
+        "accesskeysecret",
+        "access_key_secret",
+        "identitycode",
+        "identity_code",
+        "sessdata",
+        "bili_jct",
+        "csrf",
+        "buvid",
+        "cookie",
+        "token",
+        "credential",
+        "password",
+        "authorization",
+        "secretkey",
+        "apisecret",
+    )
+
+    def test_serialized_config_exposes_only_documented_keys(self):
+        config = ServiceConfig(
+            port=18000,
+            deny_user_ids=frozenset({"user:alice"}),
+            deny_nicknames=frozenset({"Carol"}),
+            keywords=frozenset({"spoiler"}),
+            gift_threshold_milli_cny=500,
+        )
+        data = config.to_dict()
+        self.assertEqual(
+            set(data), {"configVersion", "service", "mock", "snapshot", "obs"}
+        )
+        self.assertEqual(set(data["service"]), {"host", "port"})
+        self.assertEqual(set(data["mock"]), {"cadenceMilliseconds"})
+        self.assertEqual(set(data["snapshot"]), {"maxMessages"})
+        self.assertEqual(
+            set(data["obs"]),
+            {"denyUserIds", "denyNicknames", "keywords", "giftThresholdMilliCny"},
+        )
+
+    def test_serialized_config_contains_no_secret_markers(self):
+        config = ServiceConfig(
+            port=18000,
+            deny_nicknames=frozenset({"Carol"}),
+            keywords=frozenset({"spoiler"}),
+        )
+        text = json.dumps(config.to_dict()).lower()
+        for marker in self._SECRET_MARKERS:
+            self.assertNotIn(marker, text)
+
+
 if __name__ == "__main__":
     unittest.main()

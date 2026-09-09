@@ -31,6 +31,64 @@
   <button id="clear" class="control control--clear" type="button" aria-label="Clear host timeline">Clear</button>
   <button id="new-messages" class="control control--new-messages" type="button" hidden aria-label="Return to latest messages">New messages</button>
   <button id="skip" class="control control--skip" type="button" aria-label="Skip Super Chat presentation">Skip</button>
+  <button id="settings-toggle" class="control control--settings" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="Open host settings">Settings</button>
+  <section id="settings-panel" class="settings" hidden aria-label="Host settings">
+    <form id="settings-form" class="settings__form">
+      <header class="settings__header">
+        <h2 class="settings__title">Settings</h2>
+        <p class="settings__subtitle">Changes are saved for the next start; a restart is required to apply them.</p>
+      </header>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-host">Service host</label>
+        <input class="settings__input" id="settings-host" type="text" value="127.0.0.1" disabled>
+        <p class="settings__hint">Fixed loopback address.</p>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-port">Service port</label>
+        <input class="settings__input" id="settings-port" type="number" min="1024" max="65535" step="1" required>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-cadence">Mock cadence (milliseconds)</label>
+        <input class="settings__input" id="settings-cadence" type="number" min="100" max="60000" step="1" required>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-max-messages">Snapshot max messages</label>
+        <input class="settings__input" id="settings-max-messages" type="text" value="100" disabled>
+        <p class="settings__hint">Fixed protocol and DOM cap.</p>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-deny-user-ids">Denied user IDs (one per line)</label>
+        <textarea class="settings__input settings__input--list" id="settings-deny-user-ids" rows="3"></textarea>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-deny-nicknames">Denied nicknames (one per line)</label>
+        <textarea class="settings__input settings__input--list" id="settings-deny-nicknames" rows="3"></textarea>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-keywords">Denied keywords (one per line)</label>
+        <textarea class="settings__input settings__input--list" id="settings-keywords" rows="3"></textarea>
+      </div>
+
+      <div class="settings__field">
+        <label class="settings__label" for="settings-gift-threshold">Ordinary gift threshold (milli-CNY)</label>
+        <input class="settings__input" id="settings-gift-threshold" type="number" min="0" step="1" required>
+      </div>
+
+      <p id="settings-feedback" class="settings__feedback" role="status" aria-live="polite"></p>
+
+      <div class="settings__actions">
+        <button class="settings__button settings__button--primary" id="settings-save" type="submit">Save</button>
+        <button class="settings__button" id="settings-close" type="button">Close</button>
+      </div>
+    </form>
+  </section>
   <script src="/assets/host.js"></script>
 </body>
 </html>
