@@ -30,10 +30,15 @@ The service binds exactly `127.0.0.1` and exposes:
 
 - `GET /health` — exact `{"protocolVersion":1,"status":"ok"}`
 - `GET /obs` — OBS page (served from the packaged asset root)
+- `GET /host` — compact Host monitoring page (complete, unfiltered timeline)
 - `GET /assets/{name}` — allow-listed packaged assets
 - `GET /ws` — snapshot-first WebSocket with ordered `message.created` increments
+- `GET /ws/host` — snapshot-first Host WebSocket with the full 1000-message
+  canonical host snapshot and unfiltered increments
 
-The default OBS URL is `http://127.0.0.1:17391/obs`.
+The default OBS URL is `http://127.0.0.1:17391/obs`. The default Host URL is
+`http://127.0.0.1:17391/host`. See `docs/host-monitoring.md` for the Host
+surface.
 
 ## Configuration
 

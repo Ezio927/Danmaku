@@ -39,7 +39,9 @@ class Service:
     The canonical host timeline retains up to :data:`HOST_TIMELINE_MAX_MESSAGES`
     messages while OBS delivery — the reconnect snapshot and each client's
     backpressure queue — stays capped at the configured ``snapshot.maxMessages``
-    (100).
+    (100). The Host monitoring stream delivers that same complete, unfiltered
+    host timeline with its own 1000-message backpressure queue, independent of
+    the OBS delivery path.
     """
 
     def __init__(
@@ -56,6 +58,7 @@ class Service:
             store=SnapshotStore(max_messages=HOST_TIMELINE_MAX_MESSAGES),
             capacity=config.max_messages,
             delivered_capacity=config.max_messages,
+            host_capacity=HOST_TIMELINE_MAX_MESSAGES,
             filter=self._policy.is_suppressed,
             clock=clock,
         )

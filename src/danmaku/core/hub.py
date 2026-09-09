@@ -5,6 +5,12 @@ ordinary danmaku (``kind == "danmaku"``) is evicted to admit the next message;
 paid interactions (gift, guard, superChat) are never evicted. A full queue with
 no evictable danmaku refuses the offer and the hub fails that subscriber closed
 through the existing slow-client close.
+
+The hub also exposes a separate host-monitoring delivery path. Host subscribers
+receive the complete, original (un-aggregated, unfiltered) canonical message
+stream in publish order, independent of the OBS delivery path's aggregation and
+filtering, and their reconnect snapshot is the full canonical host timeline
+(:meth:`DistributionHub.snapshot`).
 """
 
 from __future__ import annotations
@@ -20,11 +26,17 @@ from .model import Message
 from .snapshot import SnapshotStore
 
 __all__ = [
+    "HOST_DELIVERY_CAPACITY",
     "SNAPSHOT_RETENTION_MILLISECONDS",
     "DistributionHub",
     "Subscription",
     "SubscriptionClosed",
 ]
+
+#: The host monitoring per-client backpressure queue bound, matching the
+#: product-required 1000-message canonical host timeline and independent of the
+#: OBS delivery snapshot and queue bounds.
+HOST_DELIVERY_CAPACITY = 1000
 
 #: OBS reconnect snapshots retain only messages received within this fixed
 #: window of the injected clock. The boundary is inclusive: a message exactly
@@ -161,6 +173,12 @@ class DistributionHub:
     retain up to ``store.max_messages`` accepted messages (for example 1000)
     while the OBS reconnect snapshot and per-client backpressure stay capped at
     their own (for example 100) limits.
+
+    ``host_capacity`` bounds the independent host-monitoring backpressure queue
+    exposed by :meth:`host_subscribe`. Host subscribers receive the complete,
+    original canonical message stream — before gift aggregation and without any
+    OBS delivery filtering — so the host timeline is a faithful monitor of every
+    accepted message while the OBS path stays filtered and aggregated.
     """
 
     def __init__(
@@ -168,6 +186,7 @@ class DistributionHub:
         store: SnapshotStore | None = None,
         capacity: int = 100,
         delivered_capacity: int = 100,
+        host_capacity: int = HOST_DELIVERY_CAPACITY,
         filter: Callable[[Message], bool] | None = None,
         aggregator: GiftAggregator | None = None,
         clock: Callable[[], int] | None = None,
@@ -186,6 +205,12 @@ class DistributionHub:
             or delivered_capacity < 1
         ):
             raise ValueError("delivered_capacity must be a positive integer")
+        if (
+            isinstance(host_capacity, bool)
+            or not isinstance(host_capacity, int)
+            or host_capacity < 1
+        ):
+            raise ValueError("host_capacity must be a positive integer")
         if filter is not None and not callable(filter):
             raise TypeError("filter must be callable or None")
         if aggregator is None:
@@ -207,12 +232,14 @@ class DistributionHub:
             )
         self._capacity = capacity
         self._delivered_capacity = delivered_capacity
+        self._host_capacity = host_capacity
         self._filter = filter
         self._aggregator = aggregator
         self._clock = clock if clock is not None else _default_clock
         self._snapshot_retention_milliseconds = snapshot_retention_milliseconds
         self._delivered = SnapshotStore(max_messages=delivered_capacity)
         self._subscribers: list[Subscription] = []
+        self._host_subscribers: list[Subscription] = []
 
     @property
     def aggregator(self) -> GiftAggregator:
@@ -222,15 +249,32 @@ class DistributionHub:
     def delivered_capacity(self) -> int:
         return self._delivered_capacity
 
+    @property
+    def host_capacity(self) -> int:
+        return self._host_capacity
+
     def subscribe(self) -> Subscription:
         subscription = Subscription(capacity=self._capacity)
         self._subscribers.append(subscription)
+        return subscription
+
+    def host_subscribe(self) -> Subscription:
+        """Return an unfiltered host-monitoring subscription.
+
+        Unlike :meth:`subscribe`, which receives the aggregated, filtered OBS
+        delivery stream, a host subscription receives the complete original
+        canonical message stream in publish order. Its queue is bounded by
+        ``host_capacity`` and uses the same eviction/close semantics.
+        """
+        subscription = Subscription(capacity=self._host_capacity)
+        self._host_subscribers.append(subscription)
         return subscription
 
     def publish(self, message: Message) -> None:
         if not isinstance(message, Message):
             raise TypeError("publish requires a Message")
         self._store.append(message)
+        self._deliver_host(message)
         for delivered in self._aggregator.accept(message):
             self._deliver(delivered)
 
@@ -250,6 +294,15 @@ class DistributionHub:
         for subscription in list(self._subscribers):
             if subscription.closed:
                 self._subscribers.remove(subscription)
+                continue
+            if not subscription._offer(message):
+                subscription.close(code=_SLOW_SUBSCRIBER_CLOSE)
+
+    def _deliver_host(self, message: Message) -> None:
+        """Offer the original message to every host subscriber, unfiltered."""
+        for subscription in list(self._host_subscribers):
+            if subscription.closed:
+                self._host_subscribers.remove(subscription)
                 continue
             if not subscription._offer(message):
                 subscription.close(code=_SLOW_SUBSCRIBER_CLOSE)

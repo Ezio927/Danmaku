@@ -16,4 +16,4 @@ dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-danmaku = ["web/index.html", "web/app.js", "web/style.css"]
+danmaku = ["web/index.html", "web/app.js", "web/style.css", "web/host.html", "web/host.js", "web/host.css"]

@@ -8,7 +8,7 @@ from aiohttp import web
 
 from danmaku.core.hub import DistributionHub
 
-from .handlers import asset_handler, health_handler, obs_handler
+from .handlers import asset_handler, health_handler, host_handler, obs_handler
 from .state import (
     ASSET_ROOT_KEY,
     HELLO_TIMEOUT_KEY,
@@ -17,7 +17,11 @@ from .state import (
     WEBSOCKETS_KEY,
     WS_DONE_KEY,
 )
-from .websocket import DEFAULT_HELLO_TIMEOUT, websocket_handler
+from .websocket import (
+    DEFAULT_HELLO_TIMEOUT,
+    host_websocket_handler,
+    websocket_handler,
+)
 
 __all__ = ["DEFAULT_ASSET_ROOT", "create_app"]
 
@@ -41,6 +45,8 @@ def create_app(
 
     app.router.add_get("/health", health_handler, allow_head=False)
     app.router.add_get("/obs", obs_handler, allow_head=False)
+    app.router.add_get("/host", host_handler, allow_head=False)
     app.router.add_get("/assets/{name}", asset_handler, allow_head=False)
     app.router.add_get("/ws", websocket_handler, allow_head=False)
+    app.router.add_get("/ws/host", host_websocket_handler, allow_head=False)
     return app
