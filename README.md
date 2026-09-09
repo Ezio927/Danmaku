@@ -38,6 +38,9 @@ The service binds exactly `127.0.0.1` and exposes:
 - `GET /host/settings` — the current non-secret configuration as JSON
 - `POST /host/settings` — validate and atomically persist a candidate
   configuration (reports `restartRequired` on success)
+- `POST /host/deny` — validate and atomically persist a single OBS deny-list
+  entry (`denyUserIds` or `denyNicknames`) for a Host timeline message (reports
+  `restartRequired` on success)
 
 The default OBS URL is `http://127.0.0.1:17391/obs`. The default Host URL is
 `http://127.0.0.1:17391/host`. See `docs/host-monitoring.md` for the Host
@@ -71,6 +74,13 @@ six editable non-secret fields (`service.port`, `mock.cadenceMilliseconds`,
 `ServiceConfig` before persisting it atomically and reports that a restart is
 required to apply it; `service.host` stays `127.0.0.1` and
 `snapshot.maxMessages` stays `100`.
+
+Each Host timeline item also exposes two accessible context actions — **Block
+user** (deny the stable `user.id`) and **Block nickname** (deny the normalized
+`user.name`). These post to `POST /host/deny`, which merges the single entry
+into the named deny list, revalidates the complete configuration, and persists
+it atomically; the running policy and canonical Host timeline are never changed,
+so a save also reports that a restart is required.
 
 ## Test
 

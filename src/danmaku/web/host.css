@@ -235,6 +235,34 @@ body {
   animation: host-enter 120ms ease-out;
 }
 
+.item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.item__action {
+  border: 1px solid #33414d;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #cfe4f5;
+  background: rgba(26, 33, 40, 0.6);
+  cursor: pointer;
+}
+
+.item__action:hover {
+  background: #2a3540;
+}
+
+.item__action:focus-visible {
+  outline: 2px solid #5cc8ff;
+  outline-offset: 2px;
+}
+
 .control {
   position: fixed;
   z-index: 10;
@@ -397,6 +425,32 @@ body {
 .settings__input:focus-visible {
   outline: 2px solid #5cc8ff;
   outline-offset: 2px;
+}
+
+.action-feedback {
+  position: fixed;
+  z-index: 10;
+  left: 12px;
+  bottom: 14px;
+  margin: 0;
+  max-width: calc(100% - 24px);
+  padding: 6px 12px;
+  border: 1px solid #33414d;
+  border-radius: 6px;
+  background: rgba(26, 33, 40, 0.96);
+  color: #e8eef4;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.action-feedback--ok {
+  color: #4cd98b;
+}
+
+.action-feedback--error {
+  color: #e8746f;
 }
 
 [hidden] {

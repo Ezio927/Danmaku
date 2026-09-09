@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
 from aiohttp import web
 
+from danmaku.core.model import ID_PATTERN
+
 from .config import ConfigError, ServiceConfig
 from .config_store import load_config, save_config
+from .filtering import normalize_nicknames
 from .state import ASSET_ROOT_KEY, CONFIG_PATH_KEY
 
 __all__ = [
@@ -16,6 +20,7 @@ __all__ = [
     "HEALTH_BODY",
     "SETTINGS_PROTOCOL_VERSION",
     "asset_handler",
+    "deny_handler",
     "health_handler",
     "host_handler",
     "obs_handler",
@@ -150,3 +155,102 @@ async def _settings_save(request: web.Request) -> web.Response:
         return _settings_error("failed to save configuration", status=500)
 
     return web.json_response(_settings_saved())
+
+
+#: The two OBS deny lists a Host context action may update. A message's stable
+#: ``user.id`` maps to ``denyUserIds``; its normalized ``user.name`` maps to
+#: ``denyNicknames``. ``keywords`` filter message content rather than a user
+#: identity, so they are deliberately out of scope for context actions.
+DENY_LISTS = frozenset({"denyUserIds", "denyNicknames"})
+
+_DENY_KEYS = frozenset({"list", "value"})
+
+
+def _deny_saved() -> dict[str, object]:
+    return {
+        "protocolVersion": SETTINGS_PROTOCOL_VERSION,
+        "saved": True,
+        "restartRequired": True,
+    }
+
+
+def _deny_error(message: str, status: int = 400) -> web.Response:
+    return web.json_response(
+        {
+            "protocolVersion": SETTINGS_PROTOCOL_VERSION,
+            "saved": False,
+            "error": message,
+        },
+        status=status,
+    )
+
+
+async def deny_handler(request: web.Request) -> web.Response:
+    """Persist one OBS deny-list entry through the validated atomic config store.
+
+    ``POST /host/deny`` accepts ``{"list": "denyUserIds" | "denyNicknames",
+    "value": "<identity>"}``. It loads the current validated configuration,
+    adds the entry to exactly the named deny list (deterministically
+    deduplicated while preserving every unrelated field), and — only after
+    :class:`ServiceConfig` revalidates the complete merged candidate — persists
+    it through the existing atomic :func:`save_config` store. A user ID must
+    match the canonical message identity shape; a nickname is trimmed and
+    casefolded and must be non-empty. Invalid or missing identities are rejected
+    with a clear message and never touch the primary or backup files. Like the
+    settings save, success reports ``restartRequired`` because the running
+    service has no live apply seam, so the running policy and canonical Host
+    timeline are never mutated.
+    """
+    path = request.app[CONFIG_PATH_KEY]
+
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        return _deny_error("action body must be valid JSON")
+
+    if not isinstance(body, dict):
+        return _deny_error("action body must be an object")
+    if set(body) != _DENY_KEYS:
+        return _deny_error("action body must have exactly keys ['list', 'value']")
+
+    list_name = body["list"]
+    value = body["value"]
+    if list_name not in DENY_LISTS:
+        return _deny_error("list must be 'denyUserIds' or 'denyNicknames'")
+    if not isinstance(value, str):
+        return _deny_error("value must be a string")
+
+    if list_name == "denyUserIds":
+        if not ID_PATTERN.fullmatch(value):
+            return _deny_error("value must be a valid user id")
+        entry = value
+    else:
+        normalized = normalize_nicknames([value])
+        if not normalized:
+            return _deny_error("value must name a non-empty nickname")
+        entry = next(iter(normalized))
+
+    current = load_config(path).config
+
+    if list_name == "denyUserIds":
+        deny_user_ids = current.deny_user_ids | frozenset({entry})
+        deny_nicknames = current.deny_nicknames
+    else:
+        deny_user_ids = current.deny_user_ids
+        deny_nicknames = current.deny_nicknames | frozenset({entry})
+
+    try:
+        candidate = dataclasses.replace(
+            current,
+            deny_user_ids=deny_user_ids,
+            deny_nicknames=deny_nicknames,
+        )
+    except (ConfigError, TypeError, ValueError) as exc:
+        return _deny_error(str(exc))
+
+    try:
+        save_config(candidate, path)
+    except OSError:
+        return _deny_error("failed to save configuration", status=500)
+
+    return web.json_response(_deny_saved())

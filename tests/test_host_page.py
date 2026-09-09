@@ -689,6 +689,78 @@ class HostSettingsSecretExclusion(unittest.TestCase):
                 self.assertNotIn(marker, content, f"secret marker {marker!r} in {name}")
 
 
+class HostContextActionsStructure(unittest.TestCase):
+    def test_html_declares_action_feedback_live_region(self):
+        html = _read("host.html")
+        self.assertIn('id="action-feedback"', html)
+        self.assertRegex(
+            html,
+            r'<p[^>]*id="action-feedback"[^>]*role="status"[^>]*aria-live="polite"',
+        )
+
+    def test_action_feedback_region_is_atomic_and_hidden_initially(self):
+        html = _read("host.html")
+        self.assertRegex(html, r'<p[^>]*id="action-feedback"[^>]*aria-atomic="true"')
+        self.assertRegex(html, r'<p[^>]*id="action-feedback"[^>]*\bhidden\b')
+
+
+class HostContextActionsContract(unittest.TestCase):
+    def test_actions_post_to_local_deny_route(self):
+        app = _read("host.js")
+        self.assertIn('"/host/deny"', app)
+        self.assertIn("http://127.0.0.1", app)
+        self.assertIn('method: "POST"', app)
+
+    def test_actions_send_list_and_value_payload(self):
+        app = _read("host.js")
+        self.assertIn("JSON.stringify({ list: list, value: value })", app)
+
+    def test_actions_target_user_id_and_nickname_deny_lists(self):
+        app = _read("host.js")
+        self.assertIn('actionButton("Block user", "denyUserIds", message.user.id)', app)
+        self.assertIn(
+            'actionButton("Block nickname", "denyNicknames", message.user.name)', app
+        )
+
+    def test_actions_are_native_buttons_rendered_with_text_api(self):
+        app = _read("host.js")
+        self.assertIn('document.createElement("button")', app)
+        self.assertIn('button.type = "button"', app)
+        self.assertIn("button.textContent = label", app)
+
+    def test_actions_render_with_text_api_only(self):
+        app = _read("host.js")
+        self.assertIn("actionFeedback.textContent", app)
+        for sink in _FORBIDDEN_DOM_SINKS:
+            self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+    def test_actions_report_restart_required_on_success(self):
+        app = _read("host.js")
+        self.assertIn("Blocked. Restart required to apply changes.", app)
+        self.assertIn("result.data.saved", app)
+
+    def test_actions_never_interpolate_error_details(self):
+        app = _read("host.js")
+        for leak in (
+            "event.reason",
+            "event.code",
+            "error.message",
+            "e.message",
+            "err.message",
+            ".stack",
+        ):
+            self.assertNotIn(leak, app, f"error detail leaked: {leak}")
+
+    def test_actions_send_no_websocket_protocol_frame(self):
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+    def test_action_button_styles_declared(self):
+        css = _read("host.css")
+        for selector in ("item__actions", "item__action", "action-feedback"):
+            self.assertIn(selector, css)
+
+
 class HostSettingsHttpTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -816,6 +888,149 @@ class HostSettingsHttpTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_settings_head_405(self):
         resp = await self.client.head("/host/settings")
+        self.assertEqual(resp.status, 405)
+
+
+class HostDenyHttpTests(unittest.IsolatedAsyncioTestCase):
+    """The Host context-action seam: persist one deny entry via /host/deny.
+
+    Each action loads the current validated configuration, merges exactly one
+    entry into the named deny list (deterministically deduplicated, preserving
+    every unrelated field), revalidates the complete candidate, and persists it
+    atomically. Invalid, stale, malformed, or missing-identity actions fail with
+    a clear message and never touch the primary or backup files.
+    """
+
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.config_path = Path(self.tmp.name) / "config.json"
+        self.hub = DistributionHub(clock=_fixed_clock)
+        self.app = create_app(
+            hub=self.hub, asset_root=_ASSET_DIR, config_path=self.config_path
+        )
+        self.client = TestClient(TestServer(self.app))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+        self.tmp.cleanup()
+
+    async def _deny(self, body):
+        return await self.client.post("/host/deny", json=body)
+
+    async def test_deny_user_id_persists_and_reports_restart_required(self):
+        save_config(ServiceConfig(port=18000), self.config_path)
+        resp = await self._deny({"list": "denyUserIds", "value": "user:alice"})
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertTrue(data["saved"])
+        self.assertTrue(data["restartRequired"])
+        result = load_config(self.config_path)
+        self.assertEqual(result.source, "primary")
+        self.assertEqual(result.config.port, 18000)
+        self.assertEqual(result.config.deny_user_ids, frozenset({"user:alice"}))
+
+    async def test_deny_nickname_is_normalized_and_deduplicated(self):
+        self.assertEqual((await self._deny({"list": "denyNicknames", "value": "  Alice "})).status, 200)
+        self.assertEqual((await self._deny({"list": "denyNicknames", "value": "ALICE"})).status, 200)
+        result = load_config(self.config_path)
+        self.assertEqual(result.config.deny_nicknames, frozenset({"alice"}))
+
+    async def test_deny_action_is_idempotent(self):
+        for _ in range(2):
+            resp = await self._deny({"list": "denyUserIds", "value": "user:alice"})
+            self.assertEqual(resp.status, 200)
+        result = load_config(self.config_path)
+        self.assertEqual(result.config.deny_user_ids, frozenset({"user:alice"}))
+
+    async def test_deny_preserves_unrelated_configuration(self):
+        save_config(
+            ServiceConfig(
+                port=18000,
+                deny_nicknames=frozenset({"Carol"}),
+                keywords=frozenset({"spoiler"}),
+                gift_threshold_milli_cny=500,
+            ),
+            self.config_path,
+        )
+        resp = await self._deny({"list": "denyUserIds", "value": "user:bob"})
+        self.assertEqual(resp.status, 200)
+        config = load_config(self.config_path).config
+        self.assertEqual(config.port, 18000)
+        self.assertEqual(config.deny_nicknames, frozenset({"Carol"}))
+        self.assertEqual(config.keywords, frozenset({"spoiler"}))
+        self.assertEqual(config.gift_threshold_milli_cny, 500)
+        self.assertEqual(config.deny_user_ids, frozenset({"user:bob"}))
+
+    async def test_deny_updates_only_selected_list(self):
+        self.assertEqual((await self._deny({"list": "denyUserIds", "value": "user:alice"})).status, 200)
+        config = load_config(self.config_path).config
+        self.assertEqual(config.deny_nicknames, frozenset())
+        self.assertEqual(config.keywords, frozenset())
+
+    async def test_unknown_list_rejected_400(self):
+        resp = await self._deny({"list": "keywords", "value": "spoiler"})
+        self.assertEqual(resp.status, 400)
+        data = await resp.json()
+        self.assertFalse(data["saved"])
+        self.assertIn("list", data["error"])
+        self.assertEqual(load_config(self.config_path).source, "defaults")
+
+    async def test_malformed_json_rejected_400(self):
+        resp = await self.client.post(
+            "/host/deny",
+            data="{not json",
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(resp.status, 400)
+
+    async def test_missing_value_rejected_400(self):
+        resp = await self._deny({"list": "denyUserIds"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("value", (await resp.json())["error"])
+
+    async def test_empty_value_rejected_400(self):
+        resp = await self._deny({"list": "denyUserIds", "value": ""})
+        self.assertEqual(resp.status, 400)
+
+    async def test_non_string_value_rejected_400(self):
+        resp = await self._deny({"list": "denyUserIds", "value": 123})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("value", (await resp.json())["error"])
+
+    async def test_stale_user_id_rejected_400(self):
+        resp = await self._deny({"list": "denyUserIds", "value": "not a valid id!"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("value", (await resp.json())["error"])
+
+    async def test_whitespace_nickname_rejected_400(self):
+        resp = await self._deny({"list": "denyNicknames", "value": "   "})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("value", (await resp.json())["error"])
+
+    async def test_unknown_body_key_rejected_400(self):
+        resp = await self._deny(
+            {"list": "denyUserIds", "value": "user:alice", "extra": 1}
+        )
+        self.assertEqual(resp.status, 400)
+
+    async def test_invalid_action_does_not_replace_last_valid_config(self):
+        save_config(ServiceConfig(port=19000), self.config_path)
+        resp = await self._deny({"list": "denyUserIds", "value": "bad id!"})
+        self.assertEqual(resp.status, 400)
+        result = load_config(self.config_path)
+        self.assertEqual(result.source, "primary")
+        self.assertEqual(result.config.port, 19000)
+        self.assertEqual(result.config.deny_user_ids, frozenset())
+
+    async def test_deny_wrong_methods_405(self):
+        for method in ("get", "put", "delete", "patch"):
+            with self.subTest(method=method):
+                resp = await getattr(self.client, method)("/host/deny")
+                self.assertEqual(resp.status, 405)
+
+    async def test_deny_head_405(self):
+        resp = await self.client.head("/host/deny")
         self.assertEqual(resp.status, 405)
 
 

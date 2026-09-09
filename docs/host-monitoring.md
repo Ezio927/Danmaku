@@ -24,6 +24,15 @@ Additive routes serve the host surface (the OBS v1 contract in
   existing atomic `save_config` store. Returns 200 with `restartRequired: true`
   on success and 400 with a clear `error` message on validation failure. All
   other methods → 405.
+- `POST /host/deny` → validates a single context-action body
+  `{"list": "denyUserIds" | "denyNicknames", "value": "<identity>"}`, loads the
+  current validated configuration, merges the entry into exactly the named deny
+  list (deterministically deduplicated while preserving every unrelated field),
+  revalidates the complete candidate with the existing `ServiceConfig` model,
+  and persists it through the existing atomic `save_config` store. Returns 200
+  with `restartRequired: true` on success and 400 with a clear `error` message
+  on any invalid, stale, malformed, or missing identity. All other methods →
+  405.
 
 ## Delivery model
 
@@ -209,6 +218,58 @@ tokens, auth bodies, or future Bilibili secrets. Every value and message is
 rendered with DOM text APIs only (`textContent`, `value`); the settings panel
 uses no `innerHTML` or any HTML sink.
 
+## Context actions
+
+Every Host timeline item exposes two accessible, view-local actions that persist
+the represented user's existing OBS deny-list entry — the stable `user.id` into
+`obs.denyUserIds`, and the normalized `user.name` into `obs.denyNicknames` —
+without changing the canonical Host state or any runtime filtering semantics.
+
+### Actions
+
+- **Block user.** A native `<button>` posts `{"list": "denyUserIds", "value":
+  <user.id>}` to the loopback `POST /host/deny` route.
+- **Block nickname.** A native `<button>` posts `{"list": "denyNicknames",
+  "value": <user.name>}` to the same route. The server trims and casefolds the
+  nickname using the existing `FilteringPolicy` normalization, so matching
+  stays exact-equality against the normalized deny set (no substring matching).
+
+Each action updates only the named deny list, leaves `keywords`,
+`giftThresholdMilliCny`, `service.*`, and `snapshot.*` untouched, and is
+idempotent: repeating an already-present identity writes the same single entry.
+
+### Save vs. apply
+
+A context action is a configuration write only:
+
+1. The server loads the current validated configuration (primary → backup →
+   defaults, exactly like `GET /host/settings`).
+2. It merges the single normalized entry into the selected deny list with
+   deterministic deduplication.
+3. It revalidates the complete merged candidate with the existing
+   `ServiceConfig` model before anything is written.
+4. A valid candidate is persisted through the existing atomic `save_config`
+   store, which retains one previously valid backup.
+5. The server responds with `restartRequired: true`; the running service keeps
+   its current configuration, so the change takes effect only on the next start.
+
+There is no live reload, no in-place `FilteringPolicy` rebuild, and no mutation
+of the running policy or the complete canonical Host timeline.
+
+### Failure handling
+
+Invalid, stale, malformed, or missing-identity actions fail safely with a clear
+`error` message and a `saved: false` response, and never replace the last valid
+primary or backup configuration:
+
+- a body that is not valid JSON, not an object, or that carries unknown or
+  missing keys is rejected;
+- a `list` value other than `denyUserIds` or `denyNicknames` is rejected;
+- a non-string or empty `value` is rejected;
+- a `denyUserIds` value that does not match the canonical message identity shape
+  is rejected; and
+- a `denyNicknames` value that normalizes to an empty string is rejected.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network
@@ -216,5 +277,7 @@ access, deployment, database, or protocol v2. It reuses the existing
 protocol v1 frame grammar (`snapshot`, `message.created`, `error`, and the exact
 `hello` client frame) on a separate endpoint; the OBS `/ws` endpoint, its
 filtering, its queues, and the frozen protocol fixtures are unchanged. The
-settings surface adds no live reload or broad runtime reconfiguration: it only
-validates and persists the existing non-secret configuration.
+settings surface and the context actions add no live reload or broad runtime
+reconfiguration: they only validate and persist the existing non-secret
+configuration, and they introduce no new filtering predicate, credential field,
+or Bilibili authentication behavior.
