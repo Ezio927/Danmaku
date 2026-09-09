@@ -82,6 +82,13 @@ into the named deny list, revalidates the complete configuration, and persists
 it atomically; the running policy and canonical Host timeline are never changed,
 so a save also reports that a restart is required.
 
+The Host page also includes a read-only **OBS setup** panel that shows the
+existing loopback OBS URL (`http://127.0.0.1:<port>/obs`) and copies it through
+the browser clipboard for an OBS Browser Source. It is purely client-side: it
+adds no route, changes no OBS protocol or filtering, and reports fixed
+success/failure feedback without surfacing exceptions or user content. See
+`docs/host-monitoring.md` for details.
+
 ## Test
 
 Run the full suite:

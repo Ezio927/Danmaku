@@ -32,6 +32,7 @@
   <button id="new-messages" class="control control--new-messages" type="button" hidden aria-label="Return to latest messages">New messages</button>
   <button id="skip" class="control control--skip" type="button" aria-label="Skip Super Chat presentation">Skip</button>
   <button id="settings-toggle" class="control control--settings" type="button" aria-expanded="false" aria-controls="settings-panel" aria-label="Open host settings">Settings</button>
+  <button id="obs-toggle" class="control control--obs" type="button" aria-expanded="false" aria-controls="obs-panel" aria-label="Open OBS setup">OBS setup</button>
   <section id="settings-panel" class="settings" hidden aria-label="Host settings">
     <form id="settings-form" class="settings__form">
       <header class="settings__header">
@@ -88,6 +89,37 @@
         <button class="settings__button" id="settings-close" type="button">Close</button>
       </div>
     </form>
+  </section>
+  <section id="obs-panel" class="settings" hidden aria-label="OBS Browser Source setup">
+    <header class="settings__header">
+      <h2 class="settings__title">OBS setup</h2>
+      <p class="settings__subtitle">Point an OBS Browser Source at the existing loopback overlay URL.</p>
+    </header>
+
+    <div class="settings__field">
+      <label class="settings__label" for="obs-url">OBS Browser Source URL</label>
+      <div class="obs-copy">
+        <input class="settings__input" id="obs-url" type="text" readonly>
+        <button class="settings__button settings__button--primary" id="obs-copy" type="button">Copy URL</button>
+      </div>
+      <p class="settings__hint">The current local service origin plus the /obs route; always loopback-only.</p>
+    </div>
+
+    <p id="obs-feedback" class="settings__feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+
+    <div class="obs-guidance">
+      <h3 class="obs-guidance__title">Browser Source steps</h3>
+      <ol class="obs-guidance__steps">
+        <li>In OBS, add a new Browser source to a scene.</li>
+        <li>Paste the copied URL into the source URL field.</li>
+        <li>Set the width and height to match your overlay, and keep the source local.</li>
+        <li>Leave the page running; it reconnects automatically on the same bounded schedule.</li>
+      </ol>
+    </div>
+
+    <div class="settings__actions">
+      <button class="settings__button" id="obs-close" type="button">Close</button>
+    </div>
   </section>
   <p id="action-feedback" class="action-feedback" role="status" aria-live="polite" aria-atomic="true" hidden></p>
   <script src="/assets/host.js"></script>

@@ -270,6 +270,35 @@ primary or backup configuration:
   is rejected; and
 - a `denyNicknames` value that normalizes to an empty string is rejected.
 
+## OBS setup
+
+The Host page adds a read-only OBS setup surface that helps streamers point an
+OBS Browser Source at the existing loopback overlay. It changes no OBS protocol,
+route, filtering, or Host timeline semantics and adds no new route or network
+target.
+
+- **URL display.** The panel shows the existing OBS URL — the fixed loopback
+  origin `http://127.0.0.1` plus the served port (from `window.location.port`,
+  default `17391`) with the `/obs` route appended — in a read-only input
+  (`id="obs-url"`). The value is rendered with the DOM value API only, so no
+  non-loopback target is ever exposed.
+- **Copy action.** A keyboard-accessible native `<button>` (`id="obs-copy"`)
+  copies the URL through the browser clipboard seam (`navigator.clipboard`)
+  when available. Success and failure are reported with fixed strings —
+  `OBS URL copied.`, `Could not copy the OBS URL.`, and
+  `Copy is not available in this browser.` — through a `role="status"`
+  `aria-live="polite"` live region (`id="obs-feedback"`). No clipboard exception
+  message, stack, or user content is ever interpolated.
+- **Guidance.** A static guide (`id="obs-panel"`) explains the existing OBS
+  Browser Source workflow: add a Browser source, paste the copied URL into the
+  source URL field, set the overlay size, and leave the page running to
+  reconnect automatically on the existing bounded schedule.
+- **Safety.** Every value and message uses DOM text/value APIs only
+  (`textContent`, `value`); the surface uses no `innerHTML` or any HTML sink,
+  sends no protocol frame (the Host client still sends exactly the frozen
+  `hello` frame), and adds no credentials, external network, public binding, or
+  desktop framework.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network
