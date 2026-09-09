@@ -7,11 +7,14 @@
   var SCROLL_SLACK_PX = 24;
 
   var container = document.getElementById("timeline");
+  var newMessagesButton = document.getElementById("new-messages");
+  var clearButton = document.getElementById("clear");
   var knownIds = new Set();
   var socket = null;
   var reconnectAttempt = 0;
   var reconnectTimer = null;
   var paused = false;
+  var unread = 0;
 
   function wsUrl() {
     var port = window.location.port || "17391";
@@ -85,7 +88,7 @@
 
   function applySnapshot(messages) {
     reconnectAttempt = 0;
-    paused = false;
+    resetFollowState();
     clearList();
     if (!Array.isArray(messages)) {
       return;
@@ -125,14 +128,53 @@
       knownIds.delete(oldest.dataset.messageId);
       container.removeChild(oldest);
     }
-    if (animate && !paused) {
-      scrollToBottom();
+    if (animate) {
+      if (paused) {
+        unread += 1;
+        showNewMessages();
+      } else {
+        scrollToBottom();
+      }
     }
+  }
+
+  function showNewMessages() {
+    newMessagesButton.textContent =
+      unread + (unread === 1 ? " new message" : " new messages");
+    newMessagesButton.hidden = false;
+  }
+
+  function hideNewMessages() {
+    newMessagesButton.hidden = true;
+  }
+
+  function resetFollowState() {
+    unread = 0;
+    paused = false;
+    hideNewMessages();
+  }
+
+  function returnToLatest() {
+    resetFollowState();
+    scrollToBottom();
+  }
+
+  function clearView() {
+    clearList();
+    resetFollowState();
+    scrollToBottom();
   }
 
   container.addEventListener("scroll", function () {
     paused = !isNearBottom();
+    if (!paused) {
+      unread = 0;
+      hideNewMessages();
+    }
   });
+
+  newMessagesButton.addEventListener("click", returnToLatest);
+  clearButton.addEventListener("click", clearView);
 
   function renderMessage(message) {
     var item = document.createElement("div");

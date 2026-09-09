@@ -100,3 +100,47 @@ body {
 .item--enter {
   animation: host-enter 120ms ease-out;
 }
+
+.control {
+  position: fixed;
+  z-index: 10;
+  border: 1px solid #33414d;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  color: #e8eef4;
+  background: rgba(26, 33, 40, 0.92);
+  cursor: pointer;
+}
+
+.control:hover {
+  background: #2a3540;
+}
+
+.control:focus-visible {
+  outline: 2px solid #5cc8ff;
+  outline-offset: 2px;
+}
+
+.control--clear {
+  top: 12px;
+  right: 12px;
+}
+
+.control--new-messages {
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-color: #5cc8ff;
+  color: #cfeaff;
+}
+
+.control--new-messages:hover {
+  background: #1f3646;
+}
+
+[hidden] {
+  display: none !important;
+}

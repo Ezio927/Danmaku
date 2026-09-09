@@ -3,14 +3,17 @@
 The Host page (``/host``) and its WebSocket (``/ws/host``) are the dedicated,
 unfiltered monitoring surface layered on the same loopback service as OBS. These
 tests cover the static page contract (safe text rendering, hello frame, reconnect
-schedule, snapshot/increment semantics, 1000-message cap) and the service
-composition (route serving, unfiltered delivery, and reconnect replacement)
-while leaving the frozen OBS protocol v1 surface untouched.
+schedule, snapshot/increment semantics, 1000-message cap, and the bounded
+timeline controls: paused-follow unread counting, the keyboard-accessible
+return-to-latest prompt, and the view-only clear) and the service composition
+(route serving, unfiltered delivery, and reconnect replacement) while leaving the
+frozen OBS protocol v1 surface untouched.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import socket
 import sys
 import tomllib
@@ -160,6 +163,60 @@ class HostSafeTextRenderingContract(unittest.TestCase):
         app = _read("host.js")
         for sink in _FORBIDDEN_DOM_SINKS:
             self.assertNotIn(sink, app, f"forbidden DOM sink present: {sink}")
+
+
+class HostTimelineControlsContract(unittest.TestCase):
+    def test_html_declares_clear_and_new_messages_controls(self):
+        html = _read("host.html")
+        self.assertIn('id="clear"', html)
+        self.assertIn('id="new-messages"', html)
+
+    def test_controls_are_keyboard_accessible_buttons(self):
+        html = _read("host.html")
+        self.assertRegex(html, r'<button[^>]*id="clear"')
+        self.assertRegex(html, r'<button[^>]*id="new-messages"')
+
+    def test_scroll_away_pauses_follow_and_counts_unread(self):
+        # Messages are still appended while paused (appendChild is unconditional),
+        # so none are lost; they are counted in ``unread``.
+        app = _read("host.js")
+        self.assertIn("isNearBottom", app)
+        self.assertIn("unread += 1", app)
+        self.assertIn("paused", app)
+        self.assertIn("appendChild", app)
+
+    def test_new_message_prompt_returns_to_latest_and_resets_unread(self):
+        app = _read("host.js")
+        self.assertIn('newMessagesButton.addEventListener("click", returnToLatest)', app)
+        self.assertIn("scrollToBottom", app)
+        self.assertIn("unread = 0", app)
+
+    def test_snapshot_resets_view_local_controls_deterministically(self):
+        app = _read("host.js")
+        self.assertIn("resetFollowState", app)
+        self.assertRegex(
+            app,
+            r"function applySnapshot\(messages\)\s*\{[^}]*resetFollowState\(\)",
+        )
+
+    def test_clear_is_view_only_and_preserves_connection_state(self):
+        app = _read("host.js")
+        match = re.search(r"function clearView\(\)\s*\{[^}]*\}", app)
+        self.assertIsNotNone(match, "clearView must be defined")
+        body = match.group(0)
+        self.assertIn("clearList", body)
+        for token in ("socket", "connect(", "reconnectAttempt", "scheduleReconnect", "WebSocket", "send("):
+            self.assertNotIn(
+                token, body, f"clearView must not touch connection state: {token}"
+            )
+
+    def test_clear_control_sends_no_protocol_frame(self):
+        # The Host client sends exactly one frame (the frozen hello); the clear
+        # control is a pure client-side DOM operation and never mutates canonical
+        # state, OBS delivery, or filtering over the wire.
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+        self.assertIn("socket.send(HELLO_FRAME)", app)
 
 
 class HostPackagingTests(unittest.TestCase):
