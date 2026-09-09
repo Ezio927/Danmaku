@@ -1,0 +1,8 @@
+{
+  "name": "heartbeat-reply",
+  "description": "A recorded Bilibili heartbeat-reply frame (operation 3, protocol version 1, 4-byte online-popularity body 12345).",
+  "protocolVersion": 1,
+  "operation": 3,
+  "sequence": 1,
+  "frameHex": "0000001400100001000000030000000100003039"
+}

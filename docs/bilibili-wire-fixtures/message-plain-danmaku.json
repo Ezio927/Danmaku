@@ -1,0 +1,8 @@
+{
+  "name": "message-plain-danmaku",
+  "description": "A recorded uncompressed Bilibili message frame (operation 5, protocol version 0) whose body is the danmaku envelope from docs/bilibili-fixtures/danmaku.json.",
+  "protocolVersion": 0,
+  "operation": 5,
+  "sequence": 1,
+  "frameHex": "000000980010000000000005000000017b22636d64223a2244414e4d555f4d5347222c226576656e744964223a22642d313030303031222c2274696d657374616d70223a313733353638393630303030302c2275736572223a7b22756964223a223130303031222c22756e616d65223a22416c696365227d2c2264617461223a7b2274657874223a22e4b8bbe692ade5a5bdefbc81227d7d"
+}

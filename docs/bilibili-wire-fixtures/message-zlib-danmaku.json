@@ -1,0 +1,8 @@
+{
+  "name": "message-zlib-danmaku",
+  "description": "A recorded zlib-compressed Bilibili message frame (operation 5, protocol version 2) whose decompressed inner packet holds the danmaku envelope from docs/bilibili-fixtures/danmaku.json.",
+  "protocolVersion": 2,
+  "operation": 5,
+  "sequence": 1,
+  "frameHex": "0000009b001000020000000500000001789c63606098c120c00002ac40cc58ad949c9ba264a5e4e2e8e71b1aef1becaea4a3945a969a57e209124dd13534000243a06049666e6a7149626e819295a1b9b1a99985a51948ca4047a9b438b548c9aa5aa93413a4c510aabe342f313715c877ccc94c4e55aad5514a492c4904292b49ad28018a3fd9b1fbd9a4b54f97ee7dbfa751a9b61600ca432cce"
+}
