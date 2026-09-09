@@ -26,6 +26,10 @@ serves them from an installed environment.
 .venv/bin/python -m danmaku --port 17391 --cadence-milliseconds 1000
 ```
 
+If the configured port is already in use, startup fails fast: it prints a
+concise error naming `127.0.0.1` and the configured port to standard error and
+exits with a non-zero status, never silently choosing another port.
+
 The service binds exactly `127.0.0.1` and exposes:
 
 - `GET /health` — exact `{"protocolVersion":1,"status":"ok"}`
