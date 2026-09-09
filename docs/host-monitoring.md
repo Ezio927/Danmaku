@@ -116,6 +116,40 @@ The top-presentation lifecycle is a client-side mirror of the documented core
 host stream and shares the same received/pending/displayed/expired semantics,
 independently of the OBS delivery path.
 
+## Connection status
+
+The Host page shows two accessible, view-local status indicators in a single
+`role="status"` live region, derived entirely from the existing loopback
+`/health` route and the existing WebSocket lifecycle. Nothing here claims any
+Bilibili or OBS availability; the page reports only the local service and the
+Host feed itself.
+
+- **Local service.** The page probes the existing loopback `GET /health` route
+  (same-origin, no query parameters, no credentials) on a bounded, fixed
+  five-second cadence. A `200` response whose body is the canonical
+  `{"protocolVersion":1,"status":"ok"}` renders `Local service: available`; any
+  failed fetch, non-`200` status, or non-`ok` body renders
+  `Local service: unavailable`. Before the first probe resolves, the indicator
+  stays empty rather than claiming a state it has not observed.
+- **Host feed.** The feed indicator is derived deterministically from the
+  WebSocket `readyState` and the bounded reconnect schedule:
+  `Host feed: connecting` while the socket is `CONNECTING`, `connected` while it
+  is `OPEN`, and `reconnecting` after a close schedules a reconnect on the
+  existing frozen `[500, 1000, 2000, 4000, 5000]` backoff. When the local
+  service is unavailable, the feed reports `Host feed: unavailable`.
+- **Determinism and safety.** Every label is a fixed string rendered through DOM
+  text APIs (`textContent`) only. No exception message, close reason, code, or
+  user content is ever interpolated into the status, so connection failures
+  expose no error details, secrets, or user content. The status indicators send
+  no protocol frame (the Host client still sends exactly the frozen `hello`
+  frame), never mutate canonical state, filtering, or OBS delivery, and do not
+  alter the existing reconnect or snapshot-replacement semantics.
+
+The four states — `connecting`, `connected`, `reconnecting`, and `unavailable` —
+are therefore each traceable to a single existing behavior: WebSocket connect,
+WebSocket open, bounded reconnect scheduling, and the loopback `/health` probe
+respectively.
+
 ## Boundaries
 
 The host surface adds no credentials, live Bilibili transport, external network

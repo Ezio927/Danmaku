@@ -7,6 +7,7 @@
   var SCROLL_SLACK_PX = 24;
   var PRESENTATION_INTERVAL_MS = 3000;
   var TICK_INTERVAL_MS = 200;
+  var HEALTH_PROBE_INTERVAL_MS = 5000;
 
   // Deterministic Super Chat tier/color buckets, keyed on the canonical
   // ``data.amountMilliCny`` integer. The label is rendered as text and the
@@ -21,6 +22,21 @@
     { min: 0, label: "Blue", css: "blue" }
   ];
 
+  // Fixed, deterministic status labels. They are rendered only as text and
+  // never interpolate exception details, secrets, or user content. The local
+  // service state comes from the existing loopback /health route; the Host feed
+  // state comes from the WebSocket lifecycle and its bounded reconnect schedule.
+  var SERVICE_STATUS_TEXT = {
+    available: "Local service: available",
+    unavailable: "Local service: unavailable"
+  };
+  var FEED_STATUS_TEXT = {
+    connecting: "Host feed: connecting",
+    connected: "Host feed: connected",
+    reconnecting: "Host feed: reconnecting",
+    unavailable: "Host feed: unavailable"
+  };
+
   var container = document.getElementById("timeline");
   var newMessagesButton = document.getElementById("new-messages");
   var clearButton = document.getElementById("clear");
@@ -32,6 +48,10 @@
   var topText = document.getElementById("top-text");
   var topPending = document.getElementById("top-pending");
   var topRemaining = document.getElementById("top-remaining");
+  var serviceStatusItem = document.getElementById("service-status");
+  var serviceStatusLabel = document.getElementById("service-status-label");
+  var feedStatusItem = document.getElementById("feed-status");
+  var feedStatusLabel = document.getElementById("feed-status-label");
   var knownIds = new Set();
   var socket = null;
   var reconnectAttempt = 0;
@@ -45,10 +65,16 @@
   var pendingQueue = [];
   var activeCard = null;
   var tickTimer = null;
+  var serviceUp = null;
 
   function wsUrl() {
     var port = window.location.port || "17391";
     return "ws://127.0.0.1:" + port + "/ws/host";
+  }
+
+  function healthUrl() {
+    var port = window.location.port || "17391";
+    return "http://127.0.0.1:" + port + "/health";
   }
 
   function connect() {
@@ -60,18 +86,23 @@
     socket.addEventListener("message", onMessage);
     socket.addEventListener("close", onClose);
     socket.addEventListener("error", onError);
+    renderStatus();
   }
 
   function onOpen() {
     socket.send(HELLO_FRAME);
+    renderStatus();
   }
 
   function onError() {
-    // Connection errors are silent: the timeline simply stays put.
+    // Connection errors are silent: the timeline simply stays put. The close
+    // event that follows drives the reconnecting status, with no error details
+    // surfaced to the user.
   }
 
   function onClose() {
     socket = null;
+    renderStatus();
     scheduleReconnect();
   }
 
@@ -86,6 +117,55 @@
       reconnectTimer = null;
       connect();
     }, delay);
+  }
+
+  function probeHealth() {
+    fetch(healthUrl())
+      .then(function (response) {
+        if (!response.ok) {
+          return false;
+        }
+        return response.json().then(function (data) {
+          return !!(data && data.status === "ok");
+        });
+      })
+      .catch(function () {
+        return false;
+      })
+      .then(function (ok) {
+        serviceUp = ok;
+        renderStatus();
+        window.setTimeout(probeHealth, HEALTH_PROBE_INTERVAL_MS);
+      });
+  }
+
+  function renderServiceStatus() {
+    if (serviceUp === null) {
+      return;
+    }
+    var state = serviceUp ? "available" : "unavailable";
+    serviceStatusItem.className = "status__item status__item--" + state;
+    serviceStatusLabel.textContent = SERVICE_STATUS_TEXT[state];
+  }
+
+  function renderFeedStatus() {
+    var state;
+    if (serviceUp === false) {
+      state = "unavailable";
+    } else if (socket && socket.readyState === WebSocket.OPEN) {
+      state = "connected";
+    } else if (socket && socket.readyState === WebSocket.CONNECTING) {
+      state = "connecting";
+    } else {
+      state = "reconnecting";
+    }
+    feedStatusItem.className = "status__item status__item--" + state;
+    feedStatusLabel.textContent = FEED_STATUS_TEXT[state];
+  }
+
+  function renderStatus() {
+    renderServiceStatus();
+    renderFeedStatus();
   }
 
   function onMessage(event) {
@@ -422,4 +502,5 @@
 
   startPresentationTicker();
   connect();
+  probeHealth();
 })();
