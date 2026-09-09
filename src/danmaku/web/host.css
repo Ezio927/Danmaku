@@ -13,15 +13,109 @@ body {
 }
 
 body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui,
     sans-serif;
   font-size: 14px;
   line-height: 1.45;
 }
 
+#top-card {
+  flex: 0 0 auto;
+  margin: 44px 12px 6px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 4px solid #5aa0e8;
+  background: rgba(26, 33, 40, 0.96);
+  color: #e8eef4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.top-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.top-card__tier {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.top-card__amount {
+  font-weight: 700;
+  color: #ffd88a;
+}
+
+.top-card__user {
+  font-weight: 700;
+  color: #9fd3ff;
+}
+
+.top-card__pending,
+.top-card__remaining {
+  font-size: 12px;
+  color: #9fb3c4;
+}
+
+.top-card__text {
+  margin: 6px 0 0;
+}
+
+.top-card--blue {
+  border-color: #5aa0e8;
+}
+
+.top-card--cyan {
+  border-color: #43d6d6;
+}
+
+.top-card--indigo {
+  border-color: #8f6fe8;
+}
+
+.top-card--purple {
+  border-color: #b06fe8;
+}
+
+.top-card--pink {
+  border-color: #e86fc0;
+}
+
+.top-card--red {
+  border-color: #e8746f;
+}
+
+.top-card--gold {
+  border-color: #e8c86f;
+}
+
+@keyframes top-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.top-card--enter {
+  animation: top-card-enter 160ms ease-out;
+}
+
 #timeline {
-  position: absolute;
-  inset: 0;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -127,6 +221,11 @@ body {
 .control--clear {
   top: 12px;
   right: 12px;
+}
+
+.control--skip {
+  top: 12px;
+  left: 12px;
 }
 
 .control--new-messages {

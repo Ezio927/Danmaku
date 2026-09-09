@@ -5,16 +5,46 @@
   var RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 5000];
   var HELLO_FRAME = '{"protocolVersion":1,"type":"hello","payload":{}}';
   var SCROLL_SLACK_PX = 24;
+  var PRESENTATION_INTERVAL_MS = 3000;
+  var TICK_INTERVAL_MS = 200;
+
+  // Deterministic Super Chat tier/color buckets, keyed on the canonical
+  // ``data.amountMilliCny`` integer. The label is rendered as text and the
+  // ``css`` suffix selects the card accent color.
+  var SUPER_CHAT_TIERS = [
+    { min: 10000000, label: "Gold", css: "gold" },
+    { min: 2000000, label: "Red", css: "red" },
+    { min: 1000000, label: "Pink", css: "pink" },
+    { min: 500000, label: "Purple", css: "purple" },
+    { min: 100000, label: "Indigo", css: "indigo" },
+    { min: 50000, label: "Cyan", css: "cyan" },
+    { min: 0, label: "Blue", css: "blue" }
+  ];
 
   var container = document.getElementById("timeline");
   var newMessagesButton = document.getElementById("new-messages");
   var clearButton = document.getElementById("clear");
+  var skipButton = document.getElementById("skip");
+  var topCard = document.getElementById("top-card");
+  var topTier = document.getElementById("top-tier");
+  var topAmount = document.getElementById("top-amount");
+  var topUser = document.getElementById("top-user");
+  var topText = document.getElementById("top-text");
+  var topPending = document.getElementById("top-pending");
+  var topRemaining = document.getElementById("top-remaining");
   var knownIds = new Set();
   var socket = null;
   var reconnectAttempt = 0;
   var reconnectTimer = null;
   var paused = false;
   var unread = 0;
+
+  // View-local top-presentation state. ``pendingQueue`` is a deterministic FIFO
+  // of received Super Chat messages waiting for their turn, and ``activeCard``
+  // holds the single displayed top card plus its deterministic display start.
+  var pendingQueue = [];
+  var activeCard = null;
+  var tickTimer = null;
 
   function wsUrl() {
     var port = window.location.port || "17391";
@@ -90,12 +120,15 @@
     reconnectAttempt = 0;
     resetFollowState();
     clearList();
+    resetPresentation();
     if (!Array.isArray(messages)) {
       return;
     }
     for (var i = 0; i < messages.length; i += 1) {
       appendMessage(messages[i], false);
     }
+    advancePresentation(Date.now());
+    renderTopCard(false);
     scrollToBottom();
   }
 
@@ -127,6 +160,9 @@
       var oldest = container.firstElementChild;
       knownIds.delete(oldest.dataset.messageId);
       container.removeChild(oldest);
+    }
+    if (message.kind === "superChat") {
+      pendingQueue.push(message);
     }
     if (animate) {
       if (paused) {
@@ -165,6 +201,143 @@
     scrollToBottom();
   }
 
+  function resetPresentation() {
+    pendingQueue.length = 0;
+    activeCard = null;
+    renderTopCard(false);
+  }
+
+  function receivedAtMillis(value) {
+    var parsed = Date.parse(value);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
+  function advancePresentation(now) {
+    var progressed = false;
+    while (true) {
+      var stepped = false;
+      if (activeCard) {
+        var expiryMs =
+          activeCard.displayedAtMs +
+          activeCard.message.data.durationSeconds * 1000;
+        if (expiryMs <= now) {
+          activeCard = null;
+          stepped = true;
+        }
+      }
+      if (!activeCard && pendingQueue.length > 0) {
+        var front = pendingQueue[0];
+        var dueMs = receivedAtMillis(front.receivedAt) + PRESENTATION_INTERVAL_MS;
+        if (dueMs <= now) {
+          pendingQueue.shift();
+          activeCard = { message: front, displayedAtMs: dueMs };
+          stepped = true;
+        }
+      }
+      if (!stepped) {
+        break;
+      }
+      progressed = true;
+    }
+    return progressed;
+  }
+
+  function superChatTier(amountMilliCny) {
+    for (var i = 0; i < SUPER_CHAT_TIERS.length; i += 1) {
+      if (amountMilliCny >= SUPER_CHAT_TIERS[i].min) {
+        return SUPER_CHAT_TIERS[i];
+      }
+    }
+    return SUPER_CHAT_TIERS[SUPER_CHAT_TIERS.length - 1];
+  }
+
+  function updatePendingCount() {
+    topPending.textContent = pendingQueue.length + " pending";
+  }
+
+  function formatDuration(seconds) {
+    var hours = Math.floor(seconds / 3600);
+    var minutes = Math.floor((seconds % 3600) / 60);
+    var secs = seconds % 60;
+    if (hours > 0) {
+      return hours + "h " + minutes + "m " + secs + "s";
+    }
+    if (minutes > 0) {
+      return minutes + "m " + secs + "s";
+    }
+    return secs + "s";
+  }
+
+  function updateRemainingTime() {
+    if (!activeCard) {
+      return;
+    }
+    var remainingMs =
+      activeCard.displayedAtMs +
+      activeCard.message.data.durationSeconds * 1000 -
+      Date.now();
+    var seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    topRemaining.textContent = formatDuration(seconds) + " remaining";
+  }
+
+  function renderTopCard(animate) {
+    if (!activeCard) {
+      topCard.hidden = true;
+      topCard.className = "top-card";
+      topTier.textContent = "";
+      topAmount.textContent = "";
+      topUser.textContent = "";
+      topText.textContent = "";
+      topPending.textContent = "";
+      topRemaining.textContent = "";
+      return;
+    }
+    var message = activeCard.message;
+    var tier = superChatTier(message.data.amountMilliCny);
+    topCard.hidden = false;
+    topCard.className = "top-card top-card--" + tier.css;
+    topTier.textContent = tier.label;
+    topAmount.textContent = formatMoney(message.data.amountMilliCny);
+    topUser.textContent = message.user.name;
+    topText.textContent = message.data.text;
+    updatePendingCount();
+    updateRemainingTime();
+    if (animate) {
+      topCard.classList.add("top-card--enter");
+      window.setTimeout(function () {
+        topCard.classList.remove("top-card--enter");
+      }, 200);
+    }
+  }
+
+  function skipPresentation() {
+    var now = Date.now();
+    if (activeCard) {
+      activeCard = null;
+    }
+    if (pendingQueue.length > 0) {
+      var front = pendingQueue.shift();
+      activeCard = { message: front, displayedAtMs: now };
+    }
+    renderTopCard(true);
+  }
+
+  function tickPresentation() {
+    if (advancePresentation(Date.now())) {
+      renderTopCard(true);
+    } else if (activeCard) {
+      updatePendingCount();
+      updateRemainingTime();
+    }
+  }
+
+  function startPresentationTicker() {
+    if (tickTimer) {
+      return;
+    }
+    tickTimer = window.setInterval(tickPresentation, TICK_INTERVAL_MS);
+  }
+
   container.addEventListener("scroll", function () {
     paused = !isNearBottom();
     if (!paused) {
@@ -175,6 +348,7 @@
 
   newMessagesButton.addEventListener("click", returnToLatest);
   clearButton.addEventListener("click", clearView);
+  skipButton.addEventListener("click", skipPresentation);
 
   function renderMessage(message) {
     var item = document.createElement("div");
@@ -246,5 +420,6 @@
     return "\u00a5" + yuan + "." + fraction;
   }
 
+  startPresentationTicker();
   connect();
 })();

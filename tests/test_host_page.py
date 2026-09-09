@@ -219,6 +219,89 @@ class HostTimelineControlsContract(unittest.TestCase):
         self.assertIn("socket.send(HELLO_FRAME)", app)
 
 
+class HostTopPresentationStructure(unittest.TestCase):
+    def test_html_declares_top_card_and_skip_control(self):
+        html = _read("host.html")
+        self.assertIn('id="top-card"', html)
+        self.assertIn('id="skip"', html)
+
+    def test_skip_control_is_keyboard_accessible_button(self):
+        html = _read("host.html")
+        self.assertRegex(html, r'<button[^>]*id="skip"')
+
+    def test_top_card_declares_text_node_fields(self):
+        html = _read("host.html")
+        for field in (
+            "top-tier",
+            "top-amount",
+            "top-user",
+            "top-text",
+            "top-pending",
+            "top-remaining",
+        ):
+            self.assertIn(f'id="{field}"', html)
+
+
+class HostTopPresentationContract(unittest.TestCase):
+    def test_presentation_interval_is_three_seconds(self):
+        app = _read("host.js")
+        self.assertIn("PRESENTATION_INTERVAL_MS = 3000", app)
+
+    def test_received_super_chat_enters_fifo_pending_queue(self):
+        app = _read("host.js")
+        self.assertIn("pendingQueue", app)
+        self.assertIn("pendingQueue.push(message)", app)
+
+    def test_earliest_pending_becomes_single_active_card(self):
+        app = _read("host.js")
+        self.assertIn("pendingQueue.shift()", app)
+        self.assertIn("activeCard = { message: front, displayedAtMs: dueMs }", app)
+
+    def test_expiry_uses_duration_seconds(self):
+        app = _read("host.js")
+        self.assertIn("activeCard.message.data.durationSeconds * 1000", app)
+
+    def test_top_card_derives_deterministic_tier_and_color(self):
+        app = _read("host.js")
+        self.assertIn("SUPER_CHAT_TIERS", app)
+        self.assertIn("function superChatTier(", app)
+        self.assertIn('topCard.className = "top-card top-card--" + tier.css', app)
+        css = _read("host.css")
+        for color in ("blue", "cyan", "indigo", "purple", "pink", "red", "gold"):
+            self.assertIn(f"top-card--{color}", css)
+
+    def test_top_card_renders_fields_with_text_api_only(self):
+        app = _read("host.js")
+        for assignment in (
+            "topTier.textContent = tier.label",
+            "topAmount.textContent = formatMoney(message.data.amountMilliCny)",
+            "topUser.textContent = message.user.name",
+            "topText.textContent = message.data.text",
+            'topPending.textContent = pendingQueue.length + " pending"',
+            'topRemaining.textContent = formatDuration(seconds) + " remaining"',
+        ):
+            self.assertIn(assignment, app)
+
+    def test_snapshot_replaces_presentation_state_without_replay_animation(self):
+        app = _read("host.js")
+        self.assertRegex(
+            app,
+            r"function applySnapshot\(messages\)\s*\{[^}]*resetPresentation\(\)",
+        )
+        self.assertIn("renderTopCard(false)", app)
+
+    def test_skip_control_advances_presentation_view_locally(self):
+        app = _read("host.js")
+        self.assertIn('skipButton.addEventListener("click", skipPresentation)', app)
+        self.assertIn("function skipPresentation()", app)
+
+    def test_skip_sends_no_protocol_frame(self):
+        # Skip mutates only view-local presentation state; the Host client still
+        # sends exactly one frame (the frozen hello) over the wire.
+        app = _read("host.js")
+        self.assertEqual(app.count("socket.send("), 1)
+
+
 class HostPackagingTests(unittest.TestCase):
     def test_host_assets_declared_as_package_data(self):
         pyproject = tomllib.loads(

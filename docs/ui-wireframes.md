@@ -27,12 +27,16 @@ window, super-chat pin strip, or interactive controls are included.
 
 # Host page wireframe
 
-The Host page (主播窗口) adds a compact control bar over the same dark timeline,
-bounded to three view-local controls.
+The Host page (主播窗口) adds a pinned Super Chat top presentation and a compact
+control bar over the same dark timeline, bounded to view-local controls.
 
 ```text
 ┌──────────────── Host viewport ──────────────────────────┐
-│                                        [Clear]          │
+│ [Skip]                                     [Clear]      │
+│ ┌─ SC ¥30.00 · Cyan ─────────────────────────────────┐ │
+│ │ Carol: Great stream                                 │ │
+│ │ 2 pending · 47s remaining                           │ │
+│ └─────────────────────────────────────────────────────┘ │
 │                                                        │
 │            older messages scroll above                  │
 │                                                        │
@@ -45,6 +49,14 @@ bounded to three view-local controls.
 └──────────── newest item / bottom anchored ─────────────┘
 ```
 
+- A received Super Chat stays in the timeline and enters a FIFO pending queue;
+  the earliest pending becomes the single pinned top card three seconds after
+  receipt and expires after `durationSeconds`, promoting the next pending item.
+- The pinned card shows the user, amount, deterministic tier/color, text,
+  pending count, and remaining time, all rendered with DOM text APIs only.
+- `[Skip]` is a native, keyboard-accessible button that dismisses the active
+  card and promotes the next pending item immediately. It mutates only
+  view-local state and sends no protocol frame.
 - Scrolling away from the bottom pauses follow; new messages keep appending
   (never lost) and are counted.
 - The bottom prompt is a native, keyboard-accessible button that shows the
@@ -52,4 +64,6 @@ bounded to three view-local controls.
 - `[Clear]` removes only the current DOM view and resets the view-local
   follow/unread state; it never touches canonical state, OBS delivery,
   filtering, or the connection, and sends no protocol frame.
+- A snapshot replacement resets and reconstructs the view-local presentation
+  state without replay animation.
 

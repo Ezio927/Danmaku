@@ -7,9 +7,20 @@
   <link rel="stylesheet" href="/assets/host.css">
 </head>
 <body>
+  <section id="top-card" class="top-card" hidden aria-label="Top Super Chat presentation">
+    <div class="top-card__row">
+      <span class="top-card__tier" id="top-tier"></span>
+      <span class="top-card__amount" id="top-amount"></span>
+      <span class="top-card__user" id="top-user"></span>
+      <span class="top-card__pending" id="top-pending"></span>
+      <span class="top-card__remaining" id="top-remaining"></span>
+    </div>
+    <p class="top-card__text" id="top-text"></p>
+  </section>
   <main id="timeline" aria-label="Host message timeline"></main>
   <button id="clear" class="control control--clear" type="button" aria-label="Clear host timeline">Clear</button>
   <button id="new-messages" class="control control--new-messages" type="button" hidden aria-label="Return to latest messages">New messages</button>
+  <button id="skip" class="control control--skip" type="button" aria-label="Skip Super Chat presentation">Skip</button>
   <script src="/assets/host.js"></script>
 </body>
 </html>
