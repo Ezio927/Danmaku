@@ -10,6 +10,9 @@ from an installed environment, without introducing any runtime dependency:
   resources (``importlib.resources``) and through the runtime
   ``DEFAULT_ASSET_ROOT`` used by ``python -m danmaku``.
 - The ``python -m danmaku`` entry point parses its documented startup flags.
+- A loopback port that is already in use fails startup with a concise, safe
+  error (naming the loopback address and port) and a deterministic non-zero
+  exit status, never selecting another port.
 """
 
 from __future__ import annotations
@@ -17,8 +20,10 @@ from __future__ import annotations
 import dataclasses
 import importlib.resources
 import os
+import socket
 import subprocess
 import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -111,6 +116,50 @@ class EntryPointStartupTests(unittest.TestCase):
 
         args = _parse_args(["--gift-threshold-milli-cny", "500"])
         self.assertEqual(args.gift_threshold_milli_cny, 500)
+
+
+class BindFailureStartupTests(unittest.TestCase):
+    """The CLI boundary fails closed and reports bind conflicts safely.
+
+    A held loopback port forces ``python -m danmaku`` to fail its bind; the
+    process must print a concise, actionable message naming the loopback
+    address and configured port (never a raw traceback or exception detail)
+    and exit with the deterministic non-zero bind-failure status.
+    """
+
+    def test_bind_conflict_reports_concise_error_and_nonzero_exit(self):
+        from danmaku.__main__ import EXIT_BIND_FAILURE
+
+        with socket.socket() as blocker:
+            blocker.bind(("127.0.0.1", 0))
+            port = blocker.getsockname()[1]
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(ROOT / "src")
+            with tempfile.TemporaryDirectory() as tmp:
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "danmaku",
+                        "--config",
+                        str(Path(tmp) / "config.json"),
+                        "--port",
+                        str(port),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=30,
+                )
+
+        self.assertEqual(result.returncode, EXIT_BIND_FAILURE)
+        self.assertIn("127.0.0.1", result.stderr)
+        self.assertIn(str(port), result.stderr)
+        self.assertIn("--port", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("OSError", result.stderr)
+        self.assertNotIn("Errno", result.stderr)
 
 
 class StartupPrecedenceTests(unittest.TestCase):

@@ -19,6 +19,10 @@ from danmaku.server.config_store import default_config_path, load_config
 from danmaku.server.filtering import DEFAULT_GIFT_THRESHOLD_MILLI_CNY
 from danmaku.server.runner import Service
 
+#: Exit status returned when the configured loopback port cannot be bound.
+#: The service fails closed: it never selects a different host or port.
+EXIT_BIND_FAILURE = 1
+
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -108,6 +112,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         asyncio.run(service.run())
     except KeyboardInterrupt:
         pass
+    except OSError:
+        print(
+            f"error: cannot bind to {config.host}:{config.port}; "
+            "the address is already in use. Stop the conflicting process or "
+            "choose a different --port and try again.",
+            file=sys.stderr,
+        )
+        return EXIT_BIND_FAILURE
     return 0
 
 
