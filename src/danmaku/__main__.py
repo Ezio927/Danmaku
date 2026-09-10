@@ -16,6 +16,7 @@ from danmaku.server.config import (
     ServiceConfig,
 )
 from danmaku.server.config_store import default_config_path, load_config
+from danmaku.server.diagnostics import LOG_FILENAME, Diagnostics
 from danmaku.server.filtering import DEFAULT_GIFT_THRESHOLD_MILLI_CNY
 from danmaku.server.runner import Service
 
@@ -97,30 +98,45 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     config_path = _resolve_config_path(args)
     result = load_config(config_path)
-    if result.diagnostic:
-        print(f"warning: {result.diagnostic}", file=sys.stderr)
 
+    # The operational log lives next to the resolved configuration file so the
+    # `--config` override keeps configuration and diagnostics together.
+    diagnostics = Diagnostics(config_path.with_name(LOG_FILENAME))
     try:
-        config = _apply_overrides(result.config, args)
-        policy = config.build_policy()
-    except (ConfigError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        if result.diagnostic:
+            print(f"warning: {result.diagnostic}", file=sys.stderr)
+            diagnostics.record(
+                "config_fallback", source=result.source, reason=result.diagnostic
+            )
 
-    service = Service(config, policy=policy, config_path=config_path)
-    try:
-        asyncio.run(service.run())
-    except KeyboardInterrupt:
-        pass
-    except OSError:
-        print(
-            f"error: cannot bind to {config.host}:{config.port}; "
-            "the address is already in use. Stop the conflicting process or "
-            "choose a different --port and try again.",
-            file=sys.stderr,
+        try:
+            config = _apply_overrides(result.config, args)
+            policy = config.build_policy()
+        except (ConfigError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+        service = Service(
+            config,
+            policy=policy,
+            config_path=config_path,
+            diagnostics=diagnostics,
         )
-        return EXIT_BIND_FAILURE
-    return 0
+        try:
+            asyncio.run(service.run())
+        except KeyboardInterrupt:
+            pass
+        except OSError:
+            print(
+                f"error: cannot bind to {config.host}:{config.port}; "
+                "the address is already in use. Stop the conflicting process or "
+                "choose a different --port and try again.",
+                file=sys.stderr,
+            )
+            return EXIT_BIND_FAILURE
+        return 0
+    finally:
+        diagnostics.close()
 
 
 if __name__ == "__main__":
