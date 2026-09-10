@@ -104,6 +104,18 @@ seam and DOM text APIs only, report fixed success/failure feedback without
 surfacing exceptions or user content, send no protocol frame, and never mutate
 canonical Host state, OBS delivery, filtering, or the deny-list actions.
 
+## Diagnostics
+
+The service writes a small, local-only operational log to `danmaku.log` next to
+the configuration file (`~/.config/danmaku/danmaku.log` on Linux/macOS,
+`%APPDATA%\danmaku\danmaku.log` on Windows; moved alongside `--config PATH`).
+It records only four allow-listed events — `startup`, `shutdown`,
+`config_fallback`, and `bind_failure` — as one JSON line each. It never records
+danmaku or Super Chat text, usernames, full user IDs, or any credential
+material. The active log respects a canonical 10 MiB limit and retains at most
+five rotated backups; `backup_count=0` truncates the active log in place and
+retains no backups. See `docs/diagnostics.md`.
+
 ## Test
 
 Run the full suite:

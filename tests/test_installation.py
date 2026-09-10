@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.resources
+import json
 import os
 import socket
 import subprocess
@@ -34,6 +35,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from danmaku.server.app import DEFAULT_ASSET_ROOT, create_app  # noqa: E402
 from danmaku.server.config import ConfigError, ServiceConfig  # noqa: E402
 from danmaku.server.config_store import default_config_path  # noqa: E402
+from danmaku.server.diagnostics import LOG_FILENAME  # noqa: E402
 
 WEB_ASSETS = ("index.html", "app.js", "style.css")
 
@@ -222,6 +224,79 @@ class SettingsRouteRegistrationTests(unittest.TestCase):
             hub=DistributionHub(), config_path="/tmp/example/config.json"
         )
         self.assertEqual(app[CONFIG_PATH_KEY], Path("/tmp/example/config.json"))
+
+
+class EntryPointDiagnosticsTests(unittest.TestCase):
+    """The CLI boundary writes a safe local operational log next to the config.
+
+    On bind failure the entry point records exactly one allow-listed
+    ``bind_failure`` event; on configuration fallback it also records a
+    ``config_fallback`` event. Both land in the deterministic local log file
+    and never include a traceback or any private content.
+    """
+
+    def _run(self, config_path: Path, port: int) -> subprocess.CompletedProcess:
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(ROOT / "src")
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "danmaku",
+                "--config",
+                str(config_path),
+                "--port",
+                str(port),
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+    def _read_records(self, log_path: Path) -> list[dict]:
+        if not log_path.exists():
+            return []
+        return [
+            json.loads(line)
+            for line in log_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+
+    def test_bind_failure_writes_bind_failure_record(self):
+        from danmaku.__main__ import EXIT_BIND_FAILURE
+
+        with socket.socket() as blocker:
+            blocker.bind(("127.0.0.1", 0))
+            port = blocker.getsockname()[1]
+            with tempfile.TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.json"
+                result = self._run(config_path, port)
+                self.assertEqual(result.returncode, EXIT_BIND_FAILURE)
+                records = self._read_records(Path(tmp) / LOG_FILENAME)
+
+        self.assertEqual([r["event"] for r in records], ["bind_failure"])
+        self.assertEqual(records[0]["host"], "127.0.0.1")
+        self.assertEqual(records[0]["port"], port)
+
+    def test_config_fallback_writes_config_fallback_record(self):
+        from danmaku.__main__ import EXIT_BIND_FAILURE
+
+        with socket.socket() as blocker:
+            blocker.bind(("127.0.0.1", 0))
+            port = blocker.getsockname()[1]
+            with tempfile.TemporaryDirectory() as tmp:
+                config_path = Path(tmp) / "config.json"
+                config_path.write_text("{not json", encoding="utf-8")
+                result = self._run(config_path, port)
+                self.assertEqual(result.returncode, EXIT_BIND_FAILURE)
+                records = self._read_records(Path(tmp) / LOG_FILENAME)
+
+        self.assertEqual(
+            [r["event"] for r in records], ["config_fallback", "bind_failure"]
+        )
+        self.assertEqual(records[0]["source"], "defaults")
+        self.assertIn("reason", records[0])
 
 
 if __name__ == "__main__":

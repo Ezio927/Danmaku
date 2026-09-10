@@ -16,6 +16,7 @@ from danmaku.mock.source import MockSource
 
 from .app import SUBSCRIPTIONS_KEY, WS_DONE_KEY, create_app
 from .config import ServiceConfig
+from .diagnostics import NULL_DIAGNOSTICS, Diagnostics
 from .filtering import FilteringPolicy
 
 __all__ = ["HOST_TIMELINE_MAX_MESSAGES", "Service"]
@@ -42,6 +43,11 @@ class Service:
     (100). The Host monitoring stream delivers that same complete, unfiltered
     host timeline with its own 1000-message backpressure queue, independent of
     the OBS delivery path.
+
+    Operational lifecycle events (startup, shutdown, bind failure) are recorded
+    through the injected :class:`~danmaku.server.diagnostics.Diagnostics`
+    boundary. When none is supplied a silent no-op boundary is used, so the
+    entry point is responsible for wiring the real local log.
     """
 
     def __init__(
@@ -51,10 +57,12 @@ class Service:
         policy: FilteringPolicy | None = None,
         clock: Callable[[], int] | None = None,
         config_path: Path | str | None = None,
+        diagnostics: Diagnostics | None = None,
     ) -> None:
         self._config = config
         self._asset_root = asset_root
         self._config_path = config_path
+        self._diagnostics = diagnostics if diagnostics is not None else NULL_DIAGNOSTICS
         self._policy = policy if policy is not None else config.build_policy()
         self._hub = DistributionHub(
             store=SnapshotStore(max_messages=HOST_TIMELINE_MAX_MESSAGES),
@@ -99,6 +107,9 @@ class Service:
         try:
             await site.start()
         except OSError:
+            self._diagnostics.record(
+                "bind_failure", host=self._config.host, port=self._config.port
+            )
             with contextlib.suppress(Exception):
                 await self._runner.cleanup()
             self._runner = None
@@ -106,6 +117,9 @@ class Service:
             raise
         self._site = site
         self._producer = asyncio.create_task(self._produce())
+        self._diagnostics.record(
+            "startup", host=self._config.host, port=self._config.port
+        )
 
     async def _produce(self) -> None:
         source = MockSource(
@@ -143,6 +157,7 @@ class Service:
             self._runner = None
         self._app = None
         self._site = None
+        self._diagnostics.record("shutdown")
 
     async def run(self) -> None:
         await self.start()
